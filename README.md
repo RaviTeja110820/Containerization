@@ -392,9 +392,9 @@ docker ps -a   # show running + stopped
 ### Come out of container but KEEP running
 
 Press:
-
+```
     CTRL + p + q
-
+```
 (Not pq, press p then q)
 
 ------------------------------------------------------------------------
@@ -450,29 +450,25 @@ Instead of attach, better use exec.
 docker exec -it <container_id> bash
 ```
 
-# opens new shell session
+- opens new shell session
 
-# container main process keeps running
+- container main process keeps running
 
+## 4️⃣ Delete all containers
 
-    ---
-
-    ## 4️⃣ Delete all containers
-
-    ```bash
     docker rm -f $(docker ps -aq)
 
-# -f → force stop + delete
+- -f → force stop + delete
 
-# aq → all container ids
+- aq → all container ids
 
 
-    ---
 
-    ## 5️⃣ Clean Docker host
 
-    ```bash
+## 5️⃣ Clean Docker host
+
     docker system prune --all
+
 
 It will: - Remove stopped containers - Remove unused networks - Remove
 unused images - Remove build cache
@@ -497,3 +493,493 @@ System will ask → type `y`
 `start` → start existing\
 `exec` → go inside\
 `rm` → delete
+
+
+# Port Mapping / Port Forwarding in Docker (Detailed Notes)
+
+This document explains in depth:
+
+-   Why port mapping is needed
+-   Container port vs host port
+-   Syntax and flags
+-   What happens internally
+-   Common mistakes
+-   Interview tips
+
+------------------------------------------------------------------------
+
+## 🧠 Core Problem
+
+Inside a container, an application runs on some port.
+
+Example: - Nginx → 80 - Spring Boot → 8080 - Node → 3000
+
+👉 That port is available **inside the container network only**.
+
+External users (browser / internet / other machines) **cannot access it
+directly**.
+
+------------------------------------------------------------------------
+
+## 🎯 Why?
+
+Because Docker creates its own:
+
+-   Network namespace
+-   Private IP
+-   Internal bridge network
+
+So container port ≠ host port.
+
+------------------------------------------------------------------------
+
+## ✅ Solution → Port Mapping / Forwarding
+
+We map:
+
+    HOST PORT  →  CONTAINER PORT
+
+Example:
+
+    8989:80
+
+Meaning:
+
+    Request comes to VM port 8989
+            ↓
+    Docker forwards to container port 80
+
+------------------------------------------------------------------------
+
+## 🔁 Visual Diagram
+
+    Browser
+       |
+       |  http://server-ip:8989
+       v
+    +---------------------------+
+    |        Host Server        |
+    |                           |
+    |   Port 8989               |
+    |      ↓                    |
+    |   Docker Engine           |
+    |      ↓                    |
+    |   Container : Port 80     |
+    +---------------------------+
+
+------------------------------------------------------------------------
+
+## 🧱 Important Rule
+
+❗ If container is already created →\
+you **CANNOT** change or add port mapping.
+
+You must delete and recreate.
+
+------------------------------------------------------------------------
+
+## ⚙️ Port mapping happens at
+
+    docker run
+
+time only.
+
+------------------------------------------------------------------------
+
+## 🚩 Flag for Port Mapping
+
+### `-p` → manual mapping
+
+### `-P` → automatic mapping
+
+------------------------------------------------------------------------
+
+# 1️⃣ Manual Port Mapping (-p)
+
+Syntax:
+
+    -p hostPort:containerPort
+
+------------------------------------------------------------------------
+
+## Example
+
+``` bash
+docker run --name web1 -d -p 8989:80 nginx
+```
+
+### Meaning
+
+-   Container runs nginx
+-   Nginx listens on port 80
+-   Host exposes port 8989
+-   Access via:
+
+```{=html}
+<!-- -->
+```
+    http://<server-ip>:8989
+
+------------------------------------------------------------------------
+
+## Multiple port mapping example
+
+``` bash
+docker run -p 8080:80 -p 8443:443 nginx
+```
+
+------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+# 2️⃣ Automatic Port Mapping (-P)
+
+Docker will automatically assign a **random free port** on host.
+
+------------------------------------------------------------------------
+
+## Example
+
+``` bash
+docker run --name web2 -d -P httpd
+```
+
+------------------------------------------------------------------------
+
+Now check mapping:
+
+``` bash
+docker ps
+```
+
+Output example:
+
+    0.0.0.0:32768->80/tcp
+
+Meaning: Host 32768 → container 80
+
+------------------------------------------------------------------------
+
+## When do we use -P?
+
+Mostly in: - Testing - Temporary environments
+
+Not ideal for production.
+
+------------------------------------------------------------------------
+
+## 🧠 How traffic flows internally
+
+1.  Request hits host port
+2.  Docker NAT rules redirect
+3.  Packet goes to container IP
+4.  App responds
+
+------------------------------------------------------------------------
+
+## 🧪 Real-time Example (Step-by-step)
+
+### Run container
+
+``` bash
+docker run -d -p 5000:80 nginx
+```
+
+### Open browser
+
+    http://server-ip:5000
+
+You will see nginx page.
+
+------------------------------------------------------------------------
+
+## 🔍 How to check port mapping
+
+``` bash
+docker ps
+```
+
+or
+
+``` bash
+docker port <container_id>
+```
+
+------------------------------------------------------------------------
+
+## ❌ Common Beginner Mistakes
+
+❌ Forget mapping → site not accessible\
+❌ Using wrong host port\
+❌ Firewall blocking host port\
+❌ Trying to change mapping after creation
+
+------------------------------------------------------------------------
+
+## 🔥 Production Best Practices
+
+✔️ Use known ports\
+✔️ Document mappings\
+✔️ Avoid random ports\
+✔️ Use reverse proxy when many containers
+
+------------------------------------------------------------------------
+
+## 🎯 Interview Questions They Ask
+
+### Q: Why port mapping needed?
+
+Because containers run in isolated network.
+
+### Q: Can we change mapping later?
+
+No → recreate container.
+
+### Q: Difference between -p and -P?
+
+-p manual, -P automatic.
+
+------------------------------------------------------------------------
+
+## 🧠 Memory Trick
+
+Container = inside house\
+Port mapping = main gate
+
+Without gate → nobody can enter.
+
+------------------------------------------------------------------------
+
+## 🚀 Summary
+
+-   Container ports are private.
+-   Host ports are public.
+-   `-p` creates connection between them.
+-   Done during `docker run`.
+
+
+
+# Editing Data Inside an Nginx Container -- What Really Happens
+
+This note explains an important Docker concept:
+
+👉 What happens when we change files **inside a running container**.
+
+------------------------------------------------------------------------
+
+## 🧪 What was done in the example
+
+### Step 1 --- Run nginx container with port mapping
+
+``` bash
+docker run -d --name web -p 8787:80 nginx
+```
+
+### Meaning
+
+-   Container name → `web`
+-   Host port → `8787`
+-   Container port → `80`
+-   nginx runs in background
+
+Access in browser:
+
+    http://server-ip:8787
+
+------------------------------------------------------------------------
+
+## Step 2 --- Enter container
+
+``` bash
+docker exec -it web /bin/bash
+```
+
+Now you are inside the container OS.
+
+------------------------------------------------------------------------
+
+## Step 3 --- Go to nginx HTML folder
+
+``` bash
+cd /usr/share/nginx/html
+```
+
+This is default nginx website directory.
+
+------------------------------------------------------------------------
+
+## Step 4 --- List files
+
+``` bash
+ls
+```
+
+You will see:
+
+    50x.html
+    index.html
+
+------------------------------------------------------------------------
+
+## Step 5 --- View or edit file
+
+``` bash
+cat index.html
+```
+
+Usually edited with:
+
+``` bash
+vi index.html
+```
+
+------------------------------------------------------------------------
+
+## 🎯 What happens after editing?
+
+Refresh browser:
+
+    http://server-ip:8787
+
+👉 You will see updated content.
+
+Because nginx serves files from this directory.
+
+------------------------------------------------------------------------
+
+# 🚨 MOST IMPORTANT PART
+
+This change is **TEMPORARY**.
+
+------------------------------------------------------------------------
+
+## ❓ Why temporary?
+
+Container filesystem is **ephemeral**.
+
+If container is: - Deleted - Recreated - Replaced
+
+👉 All changes are LOST.
+
+------------------------------------------------------------------------
+
+## 🧪 Proof
+
+``` bash
+docker rm -f web
+docker run -d --name web -p 8787:80 nginx
+```
+
+Refresh browser → default page returns.
+
+------------------------------------------------------------------------
+
+## 🧠 Why this happens
+
+You changed:
+
+    Container
+
+But not:
+
+    Image
+
+New container → new fresh copy from image.
+
+------------------------------------------------------------------------
+
+# 📦 Image vs Container
+
+  Image       Container
+  ----------- --------------
+  Blueprint   Running copy
+  Permanent   Temporary
+  Reusable    Disposable
+
+------------------------------------------------------------------------
+
+# 🏢 Real DevOps / Production Approach
+
+We NEVER modify container manually.
+
+Instead:
+
+    Dockerfile
+       ↓
+    COPY website files
+       ↓
+    Build new image
+       ↓
+    Run container
+
+------------------------------------------------------------------------
+
+## Example Dockerfile
+
+``` dockerfile
+FROM nginx
+COPY index.html /usr/share/nginx/html/index.html
+```
+
+Build image:
+
+``` bash
+docker build -t mynginx .
+```
+
+Run:
+
+``` bash
+docker run -p 8787:80 mynginx
+```
+
+Now every new container will have your updated site.
+
+------------------------------------------------------------------------
+
+## ❌ Why manual editing is bad
+
+-   Not repeatable
+-   Lost after restart
+-   Not version controlled
+-   Cannot scale
+-   Breaks CI/CD
+
+------------------------------------------------------------------------
+
+## ✅ When manual edit is OK
+
+Only for: - Learning - Debugging - Quick experiments
+
+------------------------------------------------------------------------
+
+## 🎯 Interview Answer (Golden Line)
+
+If asked:
+
+**"What happens if you change file inside container?"**
+
+Answer:
+
+> It works immediately, but changes are temporary. If container is
+> removed, data is lost. Proper method is rebuilding image or using
+> volumes.
+
+------------------------------------------------------------------------
+
+## 🚀 Bonus Knowledge
+
+To make data permanent, we use:
+
+1.  Build new image
+2.  Docker volumes
+3.  Bind mounts
+
+------------------------------------------------------------------------
+
+## 🧠 Memory Trick
+
+Image = Original book\
+Container = Photocopy
+
+Write on photocopy → original never changes.
