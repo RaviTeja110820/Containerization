@@ -223,14 +223,14 @@ If it stops → container exits.
 ------------------------------------------------------------------------
 
 ## ⚡ Containers vs Virtual Machines
-
+```
   Feature       VM        Container
   ------------- --------- -----------
   OS per app    Yes       No
   Size          GB        MB
   Boot          Minutes   Seconds
   Performance   Heavy     Fast
-
+```
 ------------------------------------------------------------------------
 
 ## 🔥 Resource Sharing
