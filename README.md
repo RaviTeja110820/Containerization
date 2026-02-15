@@ -983,3 +983,569 @@ Image = Original book\
 Container = Photocopy
 
 Write on photocopy → original never changes.
+
+
+# Docker Volumes
+
+Docker volumes are the **preferred way to persist data** generated and
+used by containers.
+
+By default, when a container is removed, its data is also removed.
+Volumes help keep the data safe even after the container is deleted.
+
+------------------------------------------------------------------------
+
+## Why Volumes Are Important
+
+✅ Data persistence\
+✅ Easy backup & migration\
+✅ Share data between containers\
+✅ Better performance than container writable layer\
+✅ Managed by Docker
+
+------------------------------------------------------------------------
+
+# Named Volumes
+
+A named volume is created and managed by Docker and referenced by a
+name.
+
+Example name:
+
+    myvol
+
+------------------------------------------------------------------------
+
+## Use Case 1
+
+**Preserve container data on the Docker host even if the container is
+deleted.**
+
+------------------------------------------------------------------------
+
+## Step 1 -- Create a Volume
+
+``` bash
+docker volume create myvol
+```
+
+### What happens internally?
+
+Docker creates a directory inside:
+
+    /var/lib/docker/volumes/
+
+------------------------------------------------------------------------
+
+## Step 2 -- List Volumes
+
+``` bash
+docker volume ls
+```
+
+------------------------------------------------------------------------
+
+## Step 3 -- Inspect Volume Details
+
+``` bash
+docker volume inspect myvol
+```
+
+This shows: - Mountpoint (actual host path) - Driver - Labels - Scope
+
+>> docker inspect is used to see low-level details of a container (network, IP, mounts, ports, env vars, etc ```docker inspect <container_id_or_name>```
+
+------------------------------------------------------------------------
+
+### Quick way to get only the path
+
+``` bash
+docker volume inspect -f '{{.Mountpoint}}' myvol
+```
+
+Example output:
+
+    /var/lib/docker/volumes/myvol/_data
+
+------------------------------------------------------------------------
+
+## Step 4 -- Mount Volume to a Container
+
+``` bash
+docker run -it -v myvol:/tmp ubuntu
+```
+
+### Meaning:
+
+    myvol  -> volume name on host
+    /tmp   -> directory inside container
+
+Now whatever is written to `/tmp` will be stored in the volume.
+
+------------------------------------------------------------------------
+
+## Step 5 -- Create Files Inside Container
+
+``` bash
+cd /tmp
+touch contfile1 contfile2
+ls
+```
+
+Files are created.
+
+------------------------------------------------------------------------
+
+## Step 6 -- Exit the Container
+
+``` bash
+exit
+```
+
+------------------------------------------------------------------------
+
+## Step 7 -- Check Data on Host
+
+Go to volume directory:
+
+``` bash
+cd /var/lib/docker/volumes/myvol/_data
+ls
+```
+
+You will see:
+
+    contfile1
+    contfile2
+
+🔥 This proves data is stored outside the container.
+
+------------------------------------------------------------------------
+
+## Step 8 -- Delete the Container
+
+``` bash
+docker rm -f <container_id>
+```
+
+------------------------------------------------------------------------
+
+## Step 9 -- Verify Data Again
+
+``` bash
+cd /var/lib/docker/volumes/myvol/_data
+ls
+```
+
+✅ Files are STILL there.\
+Volume keeps the data safe.
+
+------------------------------------------------------------------------
+
+# Important Interview Points ⭐
+
+-   Volumes are **not deleted** when a container is removed.
+-   Must delete volume manually.
+-   Best for databases, logs, application uploads.
+-   Multiple containers can use the same volume.
+
+------------------------------------------------------------------------
+
+## Delete a Volume
+
+⚠️ Container must not be using it.
+
+``` bash
+docker volume rm myvol
+```
+
+------------------------------------------------------------------------
+
+## Remove Unused Volumes
+
+``` bash
+docker volume prune
+```
+
+------------------------------------------------------------------------
+
+# Real DevOps Example 🔥
+
+Example: - MySQL container stores DB files in a volume. - Container
+crashes or removed. - New container can reuse the same volume. - No data
+loss.
+
+------------------------------------------------------------------------
+
+# Volume vs Bind Mount (Quick Idea)
+
+Volume → Managed by Docker\
+Bind Mount → Uses host directory directly
+
+Example bind mount:
+
+``` bash
+docker run -v /host/path:/container/path
+```
+
+------------------------------------------------------------------------
+
+
+
+# Summary
+
+✔ Containers are temporary\
+✔ Volumes make data permanent\
+✔ Stored under `/var/lib/docker/volumes/`\
+✔ Survive container deletion
+
+    No volume = No data after container removal
+
+
+# Docker Shared Volume Flow (Ubuntu → Volume → Nginx → Browser)
+
+This note explains how two containers share the same data using a
+**named volume**.
+```
+Flow:
+
+    Ubuntu container  --->  Docker Volume  --->  Nginx container  --->  Browser
+    (write file)            (stores data)        (serves file)          (view page)
+```
+------------------------------------------------------------------------
+
+## Goal of This Setup
+
+-   Ubuntu container creates `index.html`
+-   File is stored in Docker volume
+-   Nginx container reads the same file
+-   Browser accesses it using host IP + port
+
+Data is shared **without copying** between containers.
+
+------------------------------------------------------------------------
+
+## Step 1 -- Create a Named Volume
+
+``` bash
+docker volume create myvol
+```
+
+Verify:
+
+``` bash
+docker volume ls
+```
+
+------------------------------------------------------------------------
+
+## Step 2 -- Run Ubuntu Container & Attach Volume
+
+Mount volume to `/tmp` inside Ubuntu.
+
+``` bash
+docker run -it --name ubuntu1 -v myvol:/tmp ubuntu bash
+```
+
+------------------------------------------------------------------------
+
+## Step 3 -- Create index.html inside Ubuntu
+
+``` bash
+cd /tmp
+date >> index.html
+cat index.html
+```
+
+What happens:
+
+-   File is written to `/tmp`
+-   `/tmp` is connected to volume
+-   Data is actually stored in:
+
+```{=html}
+<!-- -->
+```
+    /var/lib/docker/volumes/myvol/_data
+
+Exit container:
+
+``` bash
+exit
+```
+
+------------------------------------------------------------------------
+
+## Step 4 -- Verify Data on Docker Host (Optional)
+
+``` bash
+cd /var/lib/docker/volumes/myvol/_data
+ls
+```
+
+You should see:
+
+    index.html
+
+------------------------------------------------------------------------
+
+## Step 5 -- Run Nginx Container Using SAME Volume
+
+Now mount the volume to Nginx default website directory.
+
+``` bash
+docker run -d --name nginx1 -p 8989:80 -v myvol:/usr/share/nginx/html nginx
+```
+
+### Meaning:
+
+    myvol -> shared storage
+    /usr/share/nginx/html -> where nginx reads web files
+    8989 -> host port
+    80   -> container port
+
+------------------------------------------------------------------------
+
+## Step 6 -- Access from Browser
+
+Open:
+
+    http://<EC2-IP>:8989
+
+You will see the content written from Ubuntu container.
+
+🔥 Ubuntu writes → Nginx reads → Browser shows.
+
+------------------------------------------------------------------------
+
+## Step 7 -- Prove Real-Time Sharing
+
+Run Ubuntu again:
+
+``` bash
+docker start -ai ubuntu1
+```
+
+Append more data:
+
+``` bash
+date >> /tmp/index.html
+exit
+```
+
+Refresh browser.
+
+✅ New content appears.
+
+------------------------------------------------------------------------
+
+## Important Understanding ⭐
+
+### Containers are isolated
+
+They normally cannot see each other's files.
+
+### Volume is the bridge
+
+Both containers mount the same storage.
+
+### Data location
+
+    /var/lib/docker/volumes/myvol/_data
+
+### Even if Ubuntu container is deleted
+
+Data remains.
+
+------------------------------------------------------------------------
+
+## Remove Containers (Data Still Safe)
+
+``` bash
+docker rm -f ubuntu1
+docker rm -f nginx1
+```
+
+Volume still exists.
+
+------------------------------------------------------------------------
+
+## Remove Volume (Data Gone)
+
+``` bash
+docker volume rm myvol
+```
+
+------------------------------------------------------------------------
+
+## Real DevOps / Interview Explanation 🔥
+
+This pattern is used in:
+
+-   App container writing logs
+-   Nginx serving uploads
+-   Multiple microservices sharing files
+-   CI/CD artifact sharing
+
+------------------------------------------------------------------------
+
+## One-Line Memory Trick 🧠
+
+    Volume = Common Hard Disk for Containers
+
+------------------------------------------------------------------------
+
+
+# Docker Bind Mount Volume
+
+In a **bind mount**, any existing directory from the Docker host
+(VM/server) is mounted directly into a container.
+
+Unlike named volumes, Docker does not manage the data location. You
+choose the path.
+
+------------------------------------------------------------------------
+
+## When Do We Use Bind Mounts?
+
+Common in development & CI/CD environments.
+
+✅ Developers update code\
+✅ Host machine gets latest files\
+✅ Container instantly sees changes\
+✅ No need to rebuild image every time
+
+------------------------------------------------------------------------
+
+## Real Scenario
+
+Developers maintain the application in a Git repository.
+
+Example repository:
+
+    https://github.com/Sonal0409/ecomm.git
+
+Goal:
+
+-   Download code to Docker host
+-   Run an Apache (httpd) container
+-   Mount the code into the web server directory
+-   Access application from browser
+
+------------------------------------------------------------------------
+
+## Architecture Flow
+
+    Git Repo → Docker Host Folder → Bind Mount → httpd Container → Browser
+
+------------------------------------------------------------------------
+
+## Step 1 -- Clone Repository to Docker Host
+
+``` bash
+git clone https://github.com/Sonal0409/ecomm.git
+```
+
+Now code will be available in:
+
+    /root/ecomm
+
+------------------------------------------------------------------------
+
+## Step 2 -- Run httpd Container with Bind Mount
+
+``` bash
+docker run --name myweb -d -P -v /root/ecomm:/usr/local/apache2/htdocs/ httpd
+```
+
+------------------------------------------------------------------------
+
+### Command Explanation ⭐
+
+    --name myweb      -> container name
+    -d                -> run in background
+    -P                -> map exposed ports automatically
+    -v                -> bind mount
+    /root/ecomm       -> host path
+    /usr/local/apache2/htdocs -> apache web root inside container
+
+Whatever files are in `/root/ecomm` → served by Apache.
+
+------------------------------------------------------------------------
+
+## Step 3 -- Verify Container
+
+``` bash
+docker ps -a
+```
+
+Check which host port is mapped to container port 80.
+
+------------------------------------------------------------------------
+
+## Step 4 -- Access from Browser
+
+Open:
+
+    http://<server-ip>:<mapped-port>
+
+You should see the ecomm application.
+
+------------------------------------------------------------------------
+
+## Step 5 -- Developer Makes Changes
+
+Suppose developer updates code in Git.
+
+We must pull latest code on server.
+
+``` bash
+cd ecomm
+git pull origin master
+```
+
+------------------------------------------------------------------------
+
+## What happens now?
+
+Because container is using bind mount:
+
+🔥 Updated files are already inside the container.
+
+No restart required (unless caching).
+
+Refresh browser → changes visible.
+
+------------------------------------------------------------------------
+
+## Key Difference from Named Volume ⭐
+
+Bind Mount → host controls path\
+Named Volume → Docker controls path
+
+Bind mount is tightly coupled with server filesystem.
+
+------------------------------------------------------------------------
+
+## Important Points for Interviews 🔥
+
+-   Mostly used in development.
+-   Good for live reload.
+-   Risk: container can modify host files.
+-   Path must exist on host.
+-   If host folder deleted → container data gone.
+
+------------------------------------------------------------------------
+
+## Security Warning ⚠️
+
+Container gets direct access to host filesystem. Wrong permissions can
+affect system files.
+
+------------------------------------------------------------------------
+
+## One-Line Memory Trick 🧠
+
+    Bind Mount = Direct host folder inside container
+
+------------------------------------------------------------------------
