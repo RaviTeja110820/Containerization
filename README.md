@@ -1549,3 +1549,578 @@ affect system files.
     Bind Mount = Direct host folder inside container
 
 ------------------------------------------------------------------------
+
+
+
+# Docker Commit -- Create Image from Container
+
+## Concept Overview
+
+When we build images using a Dockerfile, Docker internally follows this
+process:
+
+1.  Create a temporary container
+2.  Execute a Dockerfile instruction
+3.  Commit the container as a new image layer
+4.  Repeat for each instruction
+5.  Final image = combination of all layers
+
+### Important Points ⭐
+
+-   Each step in Dockerfile = one image layer
+-   Temporary containers are automatically removed
+-   Final image is immutable and layered
+-   This is how Docker builds images behind the scenes
+
+------------------------------------------------------------------------
+
+## ⚠️ Note
+
+Using `docker commit` is **NOT recommended for production**.
+
+✔ Good for learning\
+❌ Not reproducible\
+❌ No version control\
+❌ Hard to maintain
+
+👉 Always prefer **Dockerfile** in real projects.
+
+------------------------------------------------------------------------
+
+# Practical Demo -- Create Custom Image Using docker commit
+
+------------------------------------------------------------------------
+
+## Step 1 -- Run Base Container
+
+``` bash
+docker run -it --name cont1 ubuntu
+```
+
+------------------------------------------------------------------------
+
+## Step 2 -- Install Required Packages
+
+``` bash
+apt-get update && apt-get install -y git curl
+```
+
+------------------------------------------------------------------------
+
+## Step 3 -- Exit the Container
+
+``` bash
+exit
+```
+
+------------------------------------------------------------------------
+
+## Step 4 -- Commit Container to Image
+
+``` bash
+docker commit cont1 myubuntu
+```
+
+------------------------------------------------------------------------
+
+## Step 5 -- Verify Image
+
+``` bash
+docker images
+```
+
+------------------------------------------------------------------------
+
+## Step 6 -- Cleanup (Optional)
+
+``` bash
+docker rm -f $(docker ps -aq)
+```
+
+------------------------------------------------------------------------
+
+## Step 7 -- Run Container from Custom Image
+
+``` bash
+docker run -it --name mycont myubuntu
+```
+
+------------------------------------------------------------------------
+
+## Step 8 -- Validate
+
+``` bash
+git --version
+curl --version
+```
+
+------------------------------------------------------------------------
+
+## Step 9 -- Exit
+
+``` bash
+exit
+```
+
+------------------------------------------------------------------------
+
+# Push Image to Docker Hub
+
+------------------------------------------------------------------------
+
+## Login
+
+``` bash
+docker login -u <your-username>
+```
+
+------------------------------------------------------------------------
+
+## Tag
+
+``` bash
+docker tag myubuntu <your-username>/myubuntu
+```
+
+------------------------------------------------------------------------
+
+## Push
+
+``` bash
+docker push <your-username>/myubuntu
+```
+
+------------------------------------------------------------------------
+
+# Summary
+
+    docker commit = snapshot of container
+    Dockerfile     = best practice
+
+
+# Dockerfile
+
+------------------------------------------------------------------------
+
+## What is a Dockerfile?
+
+A **Dockerfile** is a simple text file that contains instructions to
+build a Docker image.
+
+### Key Points ⭐
+
+-   No file extension required
+-   Name should be `Dockerfile` (case-sensitive best practice)
+-   Contains a sequence of instructions
+-   Each instruction creates a **layer**
+-   Used to automate image creation
+
+------------------------------------------------------------------------
+
+## Syntax
+
+    INSTRUCTION argument
+
+Example:
+
+    FROM ubuntu
+    RUN apt-get update
+
+------------------------------------------------------------------------
+
+# Common Dockerfile Instructions
+
+------------------------------------------------------------------------
+
+## 1. FROM (Mandatory)
+
+Defines the base image.
+
+``` dockerfile
+FROM ubuntu:22.04
+```
+
+✔ Must be the first instruction\
+✔ Determines OS/environment
+
+------------------------------------------------------------------------
+
+## 2. RUN
+
+Executes commands during build time.
+
+``` dockerfile
+RUN apt-get update && apt-get install -y git
+```
+
+### Uses:
+
+-   Install packages
+-   Create files/directories
+-   Set permissions
+
+✔ Can be used multiple times\
+✔ Creates new image layer
+
+------------------------------------------------------------------------
+
+## 3. ENV
+
+Sets environment variables.
+
+``` dockerfile
+ENV APP_ENV=production
+```
+
+### Access:
+
+    ${APP_ENV}
+
+✔ Available during build + container runtime
+
+------------------------------------------------------------------------
+
+## 4. LABEL
+
+Adds metadata to image.
+
+``` dockerfile
+LABEL version="1.0"
+LABEL maintainer="Raviteja"
+```
+
+✔ Used for documentation\
+✔ Helps in filtering images
+
+------------------------------------------------------------------------
+
+## 5. COPY
+
+Copies files from host → container.
+
+``` dockerfile
+COPY app/ /usr/src/app/
+```
+
+✔ Only local files\
+❌ Does NOT extract `.tar` automatically
+
+------------------------------------------------------------------------
+
+## 6. ADD
+
+Similar to COPY but with extra features.
+
+``` dockerfile
+ADD app.tar.gz /app/
+ADD https://example.com/file.txt /tmp/
+```
+
+✔ Extracts `.tar` automatically\
+✔ Can download from URL
+
+⚠️ Best Practice: - Prefer `COPY` - Use `ADD` only when needed
+
+------------------------------------------------------------------------
+
+## 7. EXPOSE
+
+Defines container port.
+
+``` dockerfile
+EXPOSE 80
+```
+
+✔ Informational only\
+❌ Does NOT publish port automatically
+
+------------------------------------------------------------------------
+
+## 8. CMD
+
+Default command when container starts.
+
+``` dockerfile
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+✔ Can be overridden at runtime\
+✔ Only last CMD is used
+
+------------------------------------------------------------------------
+
+## 9. ENTRYPOINT
+
+Main command that always runs.
+
+``` dockerfile
+ENTRYPOINT ["nginx"]
+```
+
+✔ Cannot be overridden easily\
+✔ Runtime args are appended
+
+------------------------------------------------------------------------
+
+## CMD vs ENTRYPOINT ⭐
+
+  Feature    CMD               ENTRYPOINT
+  ---------- ----------------- ------------------------
+  Override   ✅ Yes            ❌ No (only args pass)
+  Purpose    Default command   Fixed main command
+
+------------------------------------------------------------------------
+
+## 10. WORKDIR
+
+Sets working directory.
+
+``` dockerfile
+WORKDIR /app
+```
+
+✔ Like `cd` in Linux
+
+------------------------------------------------------------------------
+
+## 11. USER
+
+Specifies user to run container.
+
+``` dockerfile
+USER appuser
+```
+
+✔ Improves security
+
+------------------------------------------------------------------------
+
+## 12. VOLUME
+
+Creates mount point.
+
+``` dockerfile
+VOLUME /data
+```
+
+✔ Used for persistent storage
+
+------------------------------------------------------------------------
+
+# Sample Dockerfile 🔥
+
+``` dockerfile
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y nginx
+
+COPY index.html /var/www/html/
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+------------------------------------------------------------------------
+
+# Build Image
+
+``` bash
+docker build -t myimage .
+```
+
+------------------------------------------------------------------------
+
+# Run Container
+
+``` bash
+docker run -d -p 8080:80 myimage
+```
+
+------------------------------------------------------------------------
+
+# Important Best Practices ⭐
+
+-   Use minimal base images (alpine)
+-   Combine RUN commands to reduce layers
+-   Use COPY instead of ADD
+-   Avoid root user
+-   Use .dockerignore file
+
+------------------------------------------------------------------------
+
+# One-Line Memory Trick 🧠
+
+    Dockerfile = Blueprint to create Docker Image
+
+------------------------------------------------------------------------
+
+
+# Build an Image from Dockerfile (Nginx HTML Deployment)
+
+------------------------------------------------------------------------
+
+## Goal
+
+-   Create a Dockerfile to run **Nginx**
+-   Serve a custom **index.html**
+-   Build image and run container
+-   Access page in browser
+
+------------------------------------------------------------------------
+
+## Project Structure
+
+    mydockerfiles/
+     ├── Dockerfile
+     └── index.html
+
+------------------------------------------------------------------------
+
+## Step 1 -- Create Project Directory
+
+``` bash
+mkdir mydockerfiles
+cd mydockerfiles
+```
+
+------------------------------------------------------------------------
+
+## Step 2 -- Create Dockerfile
+
+> ⚠️ Best practice: file name should be `Dockerfile` (capital D)
+
+``` bash
+vim Dockerfile
+```
+
+### Dockerfile Content
+
+``` dockerfile
+# Base image
+FROM ubuntu:22.04
+
+# Avoid interactive prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install nginx
+RUN apt-get update && apt-get install -y nginx && rm -rf /var/lib/apt/lists/*
+
+# Metadata
+LABEL description="This is nginx deployment"
+
+# Copy HTML file to nginx web root (Ubuntu nginx default)
+COPY index.html /var/www/html/index.html
+
+# Expose container port
+EXPOSE 80
+
+# Start nginx in foreground
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+------------------------------------------------------------------------
+
+## Step 3 -- Create index.html
+
+``` bash
+vim index.html
+```
+
+``` html
+<h1>This file is from Docker</h1>
+```
+
+------------------------------------------------------------------------
+
+## Step 4 -- Build Image
+
+``` bash
+docker build -t myimagenginx .
+```
+
+### Explanation ⭐
+
+-   `-t myimagenginx` → image name
+-   `.` → current directory as build context (must contain Dockerfile)
+
+------------------------------------------------------------------------
+
+## Step 5 -- Verify Image
+
+``` bash
+docker images
+```
+
+------------------------------------------------------------------------
+
+## Step 6 -- Run Container
+
+``` bash
+docker run -d -P --name mynginx myimagenginx
+```
+
+### Explanation ⭐
+
+-   `-d` → run in background
+-   `-P` → maps container port (80) to a random host port
+-   `--name` → container name
+
+> Alternative (recommended for predictable port):
+
+``` bash
+docker run -d -p 8080:80 --name mynginx myimagenginx
+```
+
+------------------------------------------------------------------------
+
+## Step 7 -- Verify Container
+
+``` bash
+docker ps -a
+```
+
+------------------------------------------------------------------------
+
+## Step 8 -- Access in Browser
+
+If using `-P`, find mapped port from `docker ps`:
+
+    http://<server-ip>:<mapped-port>
+
+If using `-p 8080:80`:
+
+    http://<server-ip>:8080
+
+------------------------------------------------------------------------
+
+# Corrections & Important Notes ⭐
+
+-   Use **Dockerfile** (capital D), not `dockerfile`
+-   Combine RUN commands to reduce layers
+-   Clean apt cache to reduce image size
+-   `EXPOSE` is informational (does not publish port)
+-   Prefer `-p` over `-P` for fixed port mapping
+
+------------------------------------------------------------------------
+
+# Best Practice Alternative 🔥
+
+Instead of Ubuntu, use official nginx image:
+
+``` dockerfile
+FROM nginx:alpine
+COPY index.html /usr/share/nginx/html/index.html
+```
+
+✔ Smaller image\
+✔ Faster build\
+✔ Production ready
+
+------------------------------------------------------------------------
+
+# One-Line Memory Trick 🧠
+
+    Dockerfile → Build → Image → Run → Container → Browser
+
+------------------------------------------------------------------------
