@@ -2124,3 +2124,589 @@ COPY index.html /usr/share/nginx/html/index.html
     Dockerfile → Build → Image → Run → Container → Browser
 
 ------------------------------------------------------------------------
+
+
+# CMD vs ENTRYPOINT Difference (Docker) – Demo
+
+## Overview
+
+Both **CMD** and **ENTRYPOINT** define commands that run when a container starts, but they behave differently.
+```
+| Feature             | CMD                                    | ENTRYPOINT                                    |
+| ------------------- | -------------------------------------- | --------------------------------------------- |
+| Purpose             | Provides **default arguments/command** | Defines the **main command that always runs** |
+| Override at runtime | ✔ Yes                                  | ❌ No (arguments are appended instead)         |
+| Multiple allowed    | Only last CMD is used                  | Only last ENTRYPOINT is used                  |
+| Typical usage       | Default command                        | Main container process                        |
+```
+---
+
+# Demo – Understanding CMD and ENTRYPOINT
+
+We will create:
+
+1. A **shell script**
+2. A **Dockerfile**
+3. Build an image
+4. Run containers with and without arguments
+
+---
+
+## Step 1 – Create a Shell Script
+
+Create a file:
+
+```bash
+vim script.sh
+```
+
+Add the following content:
+
+```bash
+#!/bin/sh
+
+echo "Running commands using container"
+echo "Passing arguments using CMD keyword"
+
+echo "Arguments passed to container: $@"
+```
+
+### Explanation
+```
+| Line        | Meaning                                 |
+| ----------- | --------------------------------------- |
+| `#!/bin/sh` | Shell interpreter                       |
+| `echo`      | Print messages                          |
+| `$@`        | Displays arguments passed to the script |
+
+Make script executable later in Dockerfile.
+```
+---
+
+## Step 2 – Create Dockerfile
+
+Create a Dockerfile:
+
+```bash
+vim Dockerfile
+```
+
+Add the following:
+
+```dockerfile
+FROM ubuntu
+
+WORKDIR /myfiles
+
+COPY script.sh /myfiles/script.sh
+
+RUN chmod +x /myfiles/script.sh
+
+ENTRYPOINT ["sh", "/myfiles/script.sh"]
+
+CMD ["Image", "container"]
+```
+
+---
+
+## Dockerfile Instruction Explanation
+
+### FROM
+
+```dockerfile
+FROM ubuntu
+```
+
+Base image for container.
+
+---
+
+### WORKDIR
+
+```dockerfile
+WORKDIR /myfiles
+```
+
+Sets working directory inside container.
+
+Equivalent to:
+
+```bash
+cd /myfiles
+```
+
+---
+
+### COPY
+
+```dockerfile
+COPY script.sh /myfiles/script.sh
+```
+
+Copies script from host → container.
+
+---
+
+### RUN
+
+```dockerfile
+RUN chmod +x /myfiles/script.sh
+```
+
+Gives execute permission to the script.
+
+---
+
+### ENTRYPOINT
+
+```dockerfile
+ENTRYPOINT ["sh", "/myfiles/script.sh"]
+```
+
+Defines the **main command that always runs** when the container starts.
+
+---
+
+### CMD
+
+```dockerfile
+CMD ["Image", "container"]
+```
+
+Provides **default arguments** to the ENTRYPOINT script.
+
+---
+
+## Step 3 – Build Docker Image
+
+Run:
+
+```bash
+docker build -t myimage01 .
+```
+
+Explanation:
+
+| Option         | Meaning                           |
+| -------------- | --------------------------------- |
+| `docker build` | Builds image                      |
+| `-t`           | Image name                        |
+| `.`            | Current directory (build context) |
+
+---
+
+## Step 4 – Run Container (Default Arguments)
+
+```bash
+docker run myimage01
+```
+
+### Output
+
+```
+Running commands using container
+Passing arguments using CMD keyword
+Arguments passed to container: Image container
+```
+
+### Why?
+
+Because CMD provides default arguments.
+
+---
+
+## Step 5 – Override CMD Arguments
+
+Run container with arguments:
+
+```bash
+docker run myimage01 docker kubernetes
+```
+
+### Output
+
+```
+Running commands using container
+Passing arguments using CMD keyword
+Arguments passed to container: docker kubernetes
+```
+
+### What happened?
+
+Runtime arguments **override CMD**.
+
+But ENTRYPOINT **still runs the script**.
+
+---
+
+## Important Concept
+
+Actual command executed:
+
+```
+ENTRYPOINT + CMD
+```
+
+Example:
+
+```
+sh /myfiles/script.sh Image container
+```
+
+If runtime args passed:
+
+```
+sh /myfiles/script.sh docker kubernetes
+```
+
+---
+
+## Key Learning
+
+### CMD
+
+* Default arguments
+* Can be overridden
+
+Example:
+
+```dockerfile
+CMD ["nginx"]
+```
+
+---
+
+### ENTRYPOINT
+
+* Main command
+* Cannot be overridden easily
+
+Example:
+
+```dockerfile
+ENTRYPOINT ["nginx"]
+```
+
+---
+
+## Best Practice
+
+Use **ENTRYPOINT for main application**
+Use **CMD for default arguments**
+
+Example:
+
+```dockerfile
+ENTRYPOINT ["python"]
+CMD ["app.py"]
+```
+
+Runtime:
+
+```
+docker run myimage script.py
+```
+
+---
+
+## Summary
+
+```
+ENTRYPOINT → Main command
+CMD        → Default arguments
+```
+
+Execution format:
+
+```
+ENTRYPOINT + CMD
+```
+
+Example:
+
+```
+sh script.sh Image container
+```
+
+---
+
+
+## Build a python Image
+
+https://github.com/Sonal0409/Jenkins-Python-Pipeline-demo.git
+
+## Build a nodejs image
+
+https://github.com/Sonal0409/nodejsappDockerfile.git
+
+
+
+
+
+# Multi-Stage Build in Dockerfile
+
+## Overview
+
+Often when building applications, developers need tools like:
+
+-   Build tools
+-   Compilers
+-   Package managers
+-   Testing frameworks
+
+These tools are required **only during the build process**, not when the
+application runs.
+
+If we install all these tools inside the final Docker image, the image
+becomes:
+
+-   Large in size
+-   Contains unnecessary tools
+-   Less secure
+
+To solve this problem, Docker provides **Multi-Stage Builds**.
+
+------------------------------------------------------------------------
+
+# Problem Without Multi-Stage Build
+
+Example Dockerfile:
+
+``` dockerfile
+FROM ubuntu
+
+RUN apt-get update
+RUN apt-get install -y openjdk-11-jdk
+RUN apt-get install -y maven
+
+COPY src /
+
+RUN mvn compile
+RUN mvn test
+RUN mvn package
+
+RUN apt-get install -y tomcat9
+
+COPY target/*.war /var/lib/tomcat9/webapps/
+
+CMD ["catalina.sh", "run"]
+```
+
+## What happens here?
+
+The final image contains:
+
+-   Java
+-   Maven
+-   Build dependencies
+-   Test tools
+-   Application artifact
+-   Tomcat server
+
+### Problem
+
+All build tools remain in the image.
+
+This causes:
+
+-   Large image size
+-   Security risks
+-   Unnecessary dependencies in production
+
+------------------------------------------------------------------------
+
+# Solution: Multi-Stage Build
+
+A **multi-stage Dockerfile** allows multiple `FROM` statements.
+
+Each `FROM` represents a **new build stage**.
+
+The output from one stage can be used in another stage.
+
+### Key Idea
+
+Only the **final stage** becomes the production image.
+
+------------------------------------------------------------------------
+
+# Advantages of Multi-Stage Build
+
+-   Smaller Docker images
+-   No build tools in production image
+-   Better security
+-   Faster deployments
+-   Cleaner Dockerfiles
+
+------------------------------------------------------------------------
+
+# Important Concepts
+```
+  Concept       Meaning
+  ------------- -------------------------------------
+  FROM          Starts a new stage
+  AS            Gives a name to a stage
+  COPY --from   Copies artifacts from another stage
+```
+------------------------------------------------------------------------
+
+# Multi-Stage Build Demo (Go Application)
+
+Repository used in demo:
+
+https://github.com/Sonal0409/multistagebuild-GoLang.git
+
+Clone repository:
+
+``` bash
+git clone https://github.com/Sonal0409/multistagebuild-GoLang.git
+cd multistagebuild-GoLang
+```
+
+------------------------------------------------------------------------
+
+# Explanation of Dockerfile
+
+## Stage 1 -- Build Stage
+
+``` dockerfile
+FROM ubuntu AS build
+```
+
+FROM ubuntu → Pull Ubuntu image from Docker Hub\
+AS build → Name this stage **build**
+
+Whenever Docker sees `FROM`, a **new stage begins**.
+
+------------------------------------------------------------------------
+
+### Install Go Compiler
+
+``` dockerfile
+RUN apt-get update && apt-get install -y golang-go
+```
+
+Installs Go compiler and build tools required to build the application.
+
+------------------------------------------------------------------------
+
+### Set Environment Variable
+
+``` dockerfile
+ENV GO111MODULE=off
+```
+
+Disables Go modules.
+
+------------------------------------------------------------------------
+
+### Copy Source Code
+
+``` dockerfile
+COPY . .
+```
+
+Copies application source code from host to container.
+
+------------------------------------------------------------------------
+
+### Build Application
+
+``` dockerfile
+RUN go build -o /app .
+```
+
+Compiles the Go application and creates a binary file named **/app**.
+
+------------------------------------------------------------------------
+
+# Stage 2 -- Final Production Image
+
+``` dockerfile
+FROM scratch
+```
+
+`scratch` is an empty base image containing no OS or libraries.
+
+------------------------------------------------------------------------
+
+### Copy Binary From Build Stage
+
+``` dockerfile
+COPY --from=build /app /app
+```
+
+Copies the compiled binary `/app` from the **build stage** to the final
+container.
+
+------------------------------------------------------------------------
+
+### Run the Application
+
+``` dockerfile
+ENTRYPOINT ["/app"]
+```
+
+Runs the compiled application when the container starts.
+
+------------------------------------------------------------------------
+
+# Build the Image
+
+``` bash
+docker build -t go-multistage .
+```
+
+------------------------------------------------------------------------
+
+# Run the Container
+
+``` bash
+docker run -p 8080:8080 go-multistage
+```
+
+------------------------------------------------------------------------
+
+# Build Flow Visualization
+
+Stage 1 (build stage)
+
+Ubuntu\
+Install Go\
+Compile application\
+Create binary /app
+
+Stage 2 (final stage)
+
+Scratch image\
+Copy /app from build stage\
+Run application
+
+------------------------------------------------------------------------
+
+# Result
+
+Final image contains only:
+
+scratch\
+/app
+
+No build tools, no dependencies.
+
+This makes the image **very small and secure**.
+
+------------------------------------------------------------------------
+
+# Key Interview Points
+
+-   Each `FROM` starts a new stage
+-   `AS` names a stage
+-   `COPY --from` copies artifacts between stages
+-   Only the **last stage becomes the final image**
+-   Significantly reduces image size
+
+------------------------------------------------------------------------
+
+# One-Line Memory Trick
+
+Multi-Stage Build = Build tools in one stage, deploy only the compiled
+artifact in the final stage.
