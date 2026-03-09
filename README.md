@@ -3290,3 +3290,196 @@ This project demonstrates:
 
 Multiple containers can work together to form a **complete application
 system using Docker**.
+
+
+# Docker Dangling Images
+
+## What Are Dangling Images?
+
+In Docker, **dangling images** are images that have:
+
+```
+<none>:<none>
+```
+
+as their **repository name and tag**.
+
+Example when you run:
+
+```bash
+docker images
+```
+
+Output may look like:
+
+```
+REPOSITORY   TAG       IMAGE ID       CREATED        SIZE
+myapp        latest    8a1f2b3c4d5e   2 minutes ago  150MB
+<none>       <none>    6f7a8b9c0d1e   5 minutes ago  150MB
+```
+
+The image with `<none>:<none>` is called a **dangling image**.
+
+---
+
+# Why Dangling Images Are Created
+
+Dangling images are created when:
+
+* A new image build **replaces an old image layer**
+* Multi-stage builds create **intermediate images**
+* Image builds are **interrupted or updated**
+
+Docker keeps these images temporarily because they may still be referenced during builds.
+
+---
+
+# Dangling Images in Multi-Stage Builds
+
+In a **multi-stage Docker build**, each stage produces an intermediate image.
+
+Example:
+
+```dockerfile
+FROM node AS build
+RUN npm install
+
+FROM nginx
+COPY --from=build /app /usr/share/nginx/html
+```
+
+Here:
+
+* `build` stage creates an intermediate image
+* Only the **last stage** becomes the **final image**
+
+The intermediate images may appear as:
+
+```
+<none>:<none>
+```
+
+These are dangling images.
+
+---
+
+# How to List Dangling Images
+
+To list only dangling images:
+
+```bash
+docker images -f dangling=true
+```
+
+Example output:
+
+```
+REPOSITORY   TAG       IMAGE ID       CREATED        SIZE
+<none>       <none>    6f7a8b9c0d1e   10 minutes ago 150MB
+```
+
+---
+
+# Removing Dangling Images
+
+## Remove dangling images (interactive)
+
+```bash
+docker image prune
+```
+
+Docker will ask:
+
+```
+Are you sure you want to continue? [y/N]
+```
+
+---
+
+## Force remove dangling images
+
+```bash
+docker image prune -f
+```
+
+The `-f` option skips the confirmation prompt.
+
+---
+
+## Remove All Unused Images
+
+```bash
+docker image prune -a
+```
+
+This removes:
+
+* dangling images
+* unused images (not referenced by any container)
+
+⚠️ Be careful with this command because it may remove images you still need.
+
+---
+
+# Example Workflow
+
+### Step 1 — Build an image
+
+```bash
+docker build -t myapp .
+```
+
+### Step 2 — Build again after changes
+
+```bash
+docker build -t myapp .
+```
+
+The previous image may become:
+
+```
+<none>:<none>
+```
+
+### Step 3 — Remove dangling images
+
+```bash
+docker image prune
+```
+
+---
+
+# Quick Cleanup Command
+
+Many DevOps engineers use:
+
+```bash
+docker system prune
+```
+
+This removes:
+
+* stopped containers
+* unused networks
+* dangling images
+
+---
+
+# Summary
+```
+| Concept         | Description                            |
+| --------------- | -------------------------------------- |
+| Dangling Images | Images with `<none>:<none>`            |
+| Cause           | Intermediate layers or replaced builds |
+| Safe to Remove  | Yes, if not used                       |
+| Cleanup Command | `docker image prune`                   |
+```
+---
+
+# One-Line Memory Trick
+
+```
+Dangling Images = Unused intermediate images left after builds
+```
+
+---
