@@ -3789,3 +3789,326 @@ GitHub → Jenkins → Maven Build → Docker Image → DockerHub → Container 
 ```
 
 ---
+
+
+# CI/CD – GitHub Actions Pipeline (Maven + Docker)
+
+Repository Example:
+
+```id="b8xy8y"
+https://github.com/Sonal0409/MavenBuild-Docker-GitHubActions.git
+```
+
+This GitHub Actions workflow automatically:
+
+1. Clones the code
+2. Builds a Java application using Maven
+3. Builds a Docker image
+4. Pushes the image to DockerHub
+
+This is a **CI/CD pipeline using GitHub Actions**.
+
+---
+
+# Workflow File Location
+
+GitHub Actions workflow files must be placed in:
+
+```id="je1x9a"
+.github/workflows/
+```
+
+Example file:
+
+```id="7uvq4b"
+.github/workflows/build.yml
+```
+
+---
+
+>> For actions marketplace URL : https://github.com/marketplace?query=docker&type=actions
+
+
+# GitHub Actions Workflow (With Comments)
+
+```yaml id="u3brws"
+# Name of the workflow visible in GitHub Actions UI
+name: build java Application
+
+# Define the event that triggers the workflow
+on:
+  push   # run pipeline whenever code is pushed to the repository
+
+jobs:
+
+  # Define the job name
+  builddeployjob:
+
+    # GitHub will create a virtual machine with Ubuntu
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # Step 1: Checkout repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+        # This action clones the GitHub repository into the runner
+
+      # Step 2: Install Java and Maven
+      - name: Install Java and Maven
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'      # Install Java 17
+          distribution: 'temurin' # OpenJDK distribution
+          cache: maven            # Cache Maven dependencies to speed up builds
+
+      # Step 3: Setup Docker build environment
+      - name: Install docker
+        uses: docker/setup-buildx-action@v3
+        # Enables Docker BuildKit and advanced Docker builds
+
+      # Step 4: Build Java application using Maven
+      - name: build the code
+        run: mvn package
+        # mvn package compiles the project and generates a WAR/JAR file
+
+      # Step 5: Login to DockerHub
+      - name: Loginto Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: sonal04                     # DockerHub username
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          # Password is stored securely in GitHub Secrets
+
+      # Step 6: Build Docker image and push to DockerHub
+      - name: Build dockerfile and push Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .                # directory containing Dockerfile
+          tags: sonal04/myimagejava # image name
+          push: true                # push image to DockerHub
+```
+
+---
+
+# Explanation of Key Sections
+
+## Workflow Name
+
+```id="t9f3er"
+name: build java Application
+```
+
+This name appears in the **GitHub Actions dashboard**.
+
+---
+
+# Trigger
+
+```id="ec0d0a"
+on:
+  push
+```
+
+The workflow runs whenever code is pushed to the repository.
+
+Example:
+
+```id="rf8c82"
+git push origin main
+```
+
+---
+
+# Job Definition
+
+```id="rc7lb8"
+jobs:
+  builddeployjob
+```
+
+A **job** represents a group of steps executed on a runner.
+
+---
+
+# Runner Environment
+
+```id="sg3jsk"
+runs-on: ubuntu-latest
+```
+
+GitHub creates a **temporary Ubuntu virtual machine** to run the pipeline.
+
+---
+
+# Step 1 — Checkout Code
+
+```id="68eyz2"
+uses: actions/checkout@v4
+```
+
+Clones the repository into the runner environment.
+
+Equivalent to:
+
+```id="k9x3o4"
+git clone <repo-url>
+```
+
+---
+
+# Step 2 — Install Java & Maven
+
+```id="xk3j1n"
+uses: actions/setup-java@v4
+```
+
+Installs:
+
+```id="6qtg9a"
+Java 17
+Maven
+```
+
+Also enables dependency caching.
+
+Benefits:
+
+* faster builds
+* avoids downloading dependencies repeatedly
+
+---
+
+# Step 3 — Setup Docker
+
+```id="amq9mp"
+docker/setup-buildx-action
+```
+
+Enables **Docker Buildx**, which allows:
+
+* advanced builds
+* multi-platform builds
+* faster image builds
+
+---
+
+# Step 4 — Build Java Application
+
+```id="cbn4f4"
+mvn package
+```
+
+This command:
+
+1. Compiles Java source code
+2. Runs tests
+3. Packages application
+
+Output example:
+
+```id="l1mxq4"
+target/myapp.war
+```
+
+---
+
+# Step 5 — Login to DockerHub
+
+```id="t3kbb5"
+docker/login-action
+```
+
+Logs into DockerHub using credentials stored in:
+
+```id="md3yzt"
+GitHub Secrets
+```
+
+Secret used:
+
+```id="q0d7c1"
+DOCKERHUB_TOKEN
+```
+
+Secrets are configured in:
+
+```id="vhyh9r"
+Repository Settings → Secrets → Actions
+```
+
+---
+
+# Step 6 — Build and Push Docker Image
+
+```id="ty9d3k"
+docker/build-push-action
+```
+
+This step:
+
+1. Reads the **Dockerfile**
+2. Builds the Docker image
+3. Pushes it to DockerHub
+
+Example image:
+
+```id="igxklc"
+sonal04/myimagejava
+```
+
+---
+
+# Example Pipeline Flow
+
+```id="q9u2k8"
+Developer pushes code
+        ↓
+GitHub Actions triggered
+        ↓
+Checkout repository
+        ↓
+Install Java & Maven
+        ↓
+Build application
+        ↓
+Build Docker image
+        ↓
+Push image to DockerHub
+```
+
+---
+
+# Example Final Image
+
+After the workflow runs successfully, the image is available at:
+
+```id="klbqts"
+https://hub.docker.com/r/sonal04/myimagejava
+```
+
+You can run the container using:
+
+```id="3d2xui"
+docker run -p 8080:8080 sonal04/myimagejava
+```
+
+---
+
+# Key DevOps Concepts Demonstrated
+
+* GitHub Actions CI/CD
+* Maven build automation
+* Docker image creation
+* DockerHub registry integration
+* Secure secret management
+
+---
+
+# One-Line Summary
+
+```id="7r3c5m"
+GitHub Push → GitHub Actions → Maven Build → Docker Image → DockerHub
+```
+
+---
