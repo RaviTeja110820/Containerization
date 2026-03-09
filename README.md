@@ -4112,3 +4112,554 @@ GitHub Push → GitHub Actions → Maven Build → Docker Image → DockerHub
 ```
 
 ---
+
+# Docker Network – Class Summary
+
+Docker networking allows containers to communicate with:
+
+* other containers
+* the host machine
+* the internet
+
+Docker provides multiple network types. The most important one is the **Bridge Network (docker0)**.
+
+---
+
+# Docker Network Types
+
+Main network types:
+```
+| Network Type     | Purpose                                 |
+| ---------------- | --------------------------------------- |
+| Bridge (default) | Default container communication network |
+| Custom Bridge    | User-defined network with DNS support   |
+| Host             | Container uses host network directly    |
+| None             | Container has no network                |
+``
+---
+
+# Default Bridge Network (docker0)
+
+When Docker is installed, it automatically creates a network called:
+
+```
+docker0
+```
+
+This network uses the **bridge driver**.
+
+### Key Characteristics
+
+* Automatically created
+* Containers communicate using **IP addresses**
+* No **DNS name resolution**
+* IP addresses may change when containers restart
+
+---
+
+# Docker Default Network Flow
+
+```
+Container
+    │
+    │ (veth cable)
+    ▼
+docker0 bridge
+    │
+    ▼
+Host Network
+    │
+    ▼
+Internet
+```
+
+---
+
+# How Containers Connect to docker0
+
+When a container is created:
+
+1. Docker creates a **virtual ethernet pair (veth cable)**
+2. One end connects to container
+3. Other end connects to **docker0 bridge**
+
+Example communication path:
+
+```
+Container
+   ↓
+veth cable
+   ↓
+docker0 bridge
+   ↓
+Host machine
+   ↓
+Internet
+```
+
+---
+
+# Key Concepts
+
+### 1. Host Network
+
+Your EC2 server has its own network.
+
+Example:
+
+```
+AWS Network
+     ↓
+EC2 Host Network
+```
+
+---
+
+### 2. Docker Network
+
+When Docker is installed:
+
+```
+Host Network
+      ↓
+Docker Bridge Network (docker0)
+      ↓
+Containers
+```
+
+All containers by default connect to this **bridge network**.
+
+---
+
+# Container Communication in Default Network
+
+Containers inside the same network can communicate using:
+
+```
+IP address
+```
+
+Example:
+
+```
+Container A (172.17.0.2)
+      │
+      ▼
+Container B (172.17.0.3)
+```
+
+However, they **cannot communicate using container names**.
+
+Example that fails:
+
+```
+ping cont2
+```
+
+Example that works:
+
+```
+ping 172.17.0.3
+```
+
+---
+
+# Problem with Default Bridge Network
+
+Problem:
+
+* container IP changes when recreated
+* services break if IP changes
+
+Example:
+
+```
+Container A → connect to 172.17.0.3
+Container B recreated → IP becomes 172.17.0.5
+Communication breaks
+```
+
+This becomes difficult when managing **hundreds of microservices**.
+
+---
+
+# Solution – Custom Bridge Network
+
+Instead of using the default bridge network, we create a **custom network**.
+
+Advantages:
+
+* DNS name resolution
+* stable service communication
+* better isolation
+
+Example communication:
+
+```
+Container A
+     │
+     ▼
+ping cont2
+     │
+     ▼
+Container B
+```
+
+---
+
+# Creating Custom Bridge Network
+
+```
+docker network create --driver=bridge edureka1
+```
+
+Now containers in this network can communicate via:
+
+* container name
+* IP address
+
+---
+
+# Container Isolation
+
+Containers in **different networks cannot communicate**.
+
+Example:
+
+```
+Network1
+   └── Container A
+
+Network2
+   └── Container B
+```
+
+A cannot reach B.
+
+---
+
+# Multi-Network Container
+
+A container can connect to **multiple networks**.
+
+Example:
+
+```
+Network1        Network2
+   │                │
+   ▼                ▼
+Container C (connected to both)
+```
+
+This container can communicate with containers in both networks.
+
+---
+
+# Host Network
+
+In host networking mode:
+
+```
+docker run --network host
+```
+
+Container uses the **host machine network directly**.
+
+Example:
+
+```
+Container
+   │
+   ▼
+Host Network
+```
+
+### Characteristics
+
+* No port mapping required
+* container shares host IP
+* commonly used in **Kubernetes components**
+
+Example:
+
+```
+docker run -d --network=host nginx
+```
+
+Check ports:
+
+```
+ss -tulwn
+```
+
+You will see port **80 already in use**.
+
+---
+
+# None Network
+
+This network provides **complete isolation**.
+
+```
+docker run --network none
+```
+
+Container will have:
+
+* no IP address
+* no internet
+* no communication
+
+Example:
+
+```
+Container
+   │
+   ▼
+No Network
+```
+
+---
+
+# Important Networking Components
+
+## Virtual Ethernet Cable (veth)
+
+When container is created:
+
+```
+Container
+   │
+   │ veth cable
+   ▼
+docker0 bridge
+```
+
+This allows communication with the host.
+
+Check veth cables:
+
+```
+ip link show | grep veth
+```
+
+---
+
+# NAT (Network Address Translation)
+
+Docker uses NAT so containers can access the internet.
+
+Flow:
+
+```
+Container
+   ↓
+docker0 bridge
+   ↓
+NAT (iptables)
+   ↓
+Host network
+   ↓
+Internet
+```
+
+Check NAT rules:
+
+```
+iptables -t nat -L -n -v
+```
+
+---
+
+# Demo Commands
+
+## Check Host Network
+
+```
+ip a
+```
+
+---
+
+## List Docker Networks
+
+```
+docker network ls
+```
+
+---
+
+## Check NAT Configuration
+
+```
+iptables -t nat -L -n -v
+```
+
+---
+
+## Check Virtual Ethernet Cables
+
+```
+ip link show | grep veth
+```
+
+---
+
+# Demo – Custom Bridge Network
+
+Create network:
+
+```
+docker network create --driver=bridge edureka1
+```
+
+---
+
+Create first container:
+
+```
+docker run -itd --name=cont1 --network=edureka1 busybox
+```
+
+Inspect container:
+
+```
+docker inspect cont1
+```
+
+---
+
+Create second container:
+
+```
+docker run -itd --name=cont2 --network=edureka1 busybox
+```
+
+Inspect container:
+
+```
+docker inspect cont2
+```
+
+Now containers can communicate via:
+
+```
+ping cont2
+```
+
+---
+
+# Demo – Host Network
+
+```
+docker run -d --network=host --name=n1 nginx
+```
+
+Check port usage:
+
+```
+ss -tulwn
+```
+
+---
+
+# Demo – None Network
+
+```
+docker run -itd --name n2 --network none busybox
+```
+
+Container will not have an IP address.
+
+---
+
+# Multi-Network Demo
+
+### Step 1 – Create networks
+
+```
+docker network create mynet
+docker network create mynet2
+```
+
+---
+
+### Step 2 – Container in mynet
+
+```
+docker run -itd --name=c1 --network=mynet busybox
+```
+
+---
+
+### Step 3 – Container in mynet2
+
+```
+docker run -itd --name=c2 --network=mynet2 busybox
+```
+
+Observation:
+
+```
+c1 cannot communicate with c2
+```
+
+---
+
+### Step 4 – Container in both networks
+
+```
+docker run -itd --name=c3 --network=mynet2 --network=mynet busybox
+```
+
+Observation:
+
+```
+c3 can communicate with c1 and c2
+```
+
+---
+
+# Final Network Architecture Example
+
+```
+            mynet
+              │
+              ▼
+          Container C1
+
+              │
+              ▼
+        Container C3
+              │
+              ▼
+          Container C2
+              ▲
+              │
+            mynet2
+```
+
+---
+
+# Best Practice
+
+When deploying **microservices**, always use:
+
+```
+Custom Bridge Networks
+```
+
+Avoid using the **default docker0 bridge network**.
+
+---
+
+# One-Line Summary
+
+```
+docker0 → default network
+custom bridge → production microservices network
+host → container shares host network
+none → no networking
+```
+
+---
