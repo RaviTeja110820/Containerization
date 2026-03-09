@@ -3483,3 +3483,309 @@ Dangling Images = Unused intermediate images left after builds
 ```
 
 ---
+
+
+# CI/CD – Jenkins Docker Pipeline
+
+This pipeline demonstrates how to build and deploy a **Java web application using Jenkins and Docker**.
+
+The application produces a **WAR file** which is deployed on **Tomcat**.
+
+---
+
+# How the Application Works
+
+Tomcat automatically deploys any **`.war` file** placed in:
+
+```
+$CATALINA_HOME/webapps
+```
+
+When the WAR file is placed there:
+
+1. Tomcat **extracts the WAR**
+2. Deploys the application
+3. Makes it available through a browser
+
+Example URL:
+
+```
+http://<publicIP>:<port>/addressbook
+```
+
+Example:
+
+```
+http://192.168.1.10:8080/addressbook
+```
+
+---
+
+# Jenkins Permission for Docker
+
+Jenkins must have permission to run Docker commands.
+
+Run this command on the server:
+
+```bash id="b8f60q"
+# Give permission to Jenkins user to access Docker socket
+# Docker CLI communicates with Docker daemon through this socket
+chmod -R 777 /var/run/docker.sock
+```
+
+⚠️ **Note**
+
+This is not recommended for production due to security risks.
+
+Better approach:
+
+```bash id="55fl1c"
+sudo usermod -aG docker jenkins
+```
+
+---
+
+# Jenkins Pipeline Overview
+
+This pipeline performs the following steps:
+
+```
+1. Clone source code from GitHub
+2. Build Java application using Maven
+3. Build Docker image
+4. Push image to DockerHub
+5. Deploy container using Docker
+```
+
+---
+
+# Jenkins Pipeline Code
+
+```groovy id="gr7e5x"
+pipeline{
+
+    # Jenkins can run the pipeline on any available agent/node
+    agent any
+
+    # Define tools required for the pipeline
+    tools{
+        # Use Maven tool configured in Jenkins global tools
+        maven 'mymaven'
+    }
+
+    stages{
+
+        stage('clone the repo'){
+            steps{
+                # Clone source code from GitHub repository
+                git 'https://github.com/Sonal0409/DevOpsCodeDemo.git'
+            }
+        }
+
+        stage('Build Code'){
+            steps{
+                # Build Java project using Maven
+                # clean -> removes previous build artifacts
+                # package -> creates WAR file
+                sh 'mvn clean package'
+            }
+        }
+
+        stage('Build Image'){
+            steps{
+                # Build Docker image from Dockerfile in repository
+                # -t assigns a tag/name to the image
+                sh 'docker build -t myjavajenkins .'
+            }
+        }
+
+        stage('login and push Image'){
+            steps{
+
+                # Use Jenkins credentials stored securely
+                # DOCKERHUB_TOKEN is stored in Jenkins credentials manager
+                withCredentials([string(credentialsId: 'DOCKERHUB_TOKEN', variable: 'DOCKERHUB_PASSWORD')]) {
+
+                    # Login to DockerHub
+                    # Password is taken securely from Jenkins credential store
+                    sh 'docker login -u sonal04 -p ${DOCKERHUB_PASSWORD}'
+                }
+
+                # Tag image with DockerHub repository name
+                sh 'docker tag myjavajenkins sonal04/myjavajenkins'
+
+                # Push image to DockerHub registry
+                sh 'docker push sonal04/myjavajenkins'
+            }
+        }
+
+        stage('Deploy the Image'){
+            steps{
+
+                # Run the container in detached mode
+                # -d runs container in background
+                # -P maps container ports automatically to host ports
+                sh 'docker run -d -P sonal04/myjavajenkins'
+            }
+        }
+
+    }
+}
+```
+
+---
+
+# Pipeline Stage Explanation
+
+## Stage 1 — Clone Repository
+
+```
+git clone
+```
+
+Downloads application source code from GitHub.
+
+Repository:
+
+```
+https://github.com/Sonal0409/DevOpsCodeDemo.git
+```
+
+---
+
+## Stage 2 — Build Code
+
+```
+mvn clean package
+```
+
+Actions:
+```
+| Command | Purpose                      |
+| ------- | ---------------------------- |
+| clean   | Removes previous build files |
+| package | Creates `.war` file          |
+```
+Example output:
+
+```
+target/addressbook.war
+```
+
+---
+
+## Stage 3 — Build Docker Image
+
+```
+docker build -t myjavajenkins .
+```
+
+Creates Docker image using the **Dockerfile** in the repository.
+
+Image name:
+
+```
+myjavajenkins
+```
+
+---
+
+## Stage 4 — Push Image to DockerHub
+
+### Login
+
+```
+docker login
+```
+
+Uses Jenkins credentials to authenticate.
+
+### Tag Image
+
+```
+docker tag myjavajenkins sonal04/myjavajenkins
+```
+
+Format:
+
+```
+<dockerhub-username>/<image-name>
+```
+
+### Push Image
+
+```
+docker push sonal04/myjavajenkins
+```
+
+Uploads image to DockerHub registry.
+
+---
+
+## Stage 5 — Deploy Container
+
+```
+docker run -d -P sonal04/myjavajenkins
+```
+
+Options:
+```
+| Option | Meaning                     |
+| ------ | --------------------------- |
+| -d     | Run container in background |
+| -P     | Automatically map ports     |
+```
+Example port mapping:
+
+```
+0.0.0.0:32768 -> 8080
+```
+
+Application URL becomes:
+
+```
+http://<server-ip>:32768/addressbook
+```
+
+---
+
+# Complete CI/CD Flow
+
+```
+Developer pushes code
+        ↓
+Jenkins triggers pipeline
+        ↓
+Clone GitHub repo
+        ↓
+Build WAR using Maven
+        ↓
+Build Docker image
+        ↓
+Push image to DockerHub
+        ↓
+Run container on server
+        ↓
+Application deployed
+```
+
+---
+
+# Key DevOps Concepts Used
+
+* Jenkins Pipeline
+* Maven build automation
+* Docker image creation
+* DockerHub registry
+* Credential management
+* Automated deployment
+
+---
+
+# One-Line Summary
+
+```
+GitHub → Jenkins → Maven Build → Docker Image → DockerHub → Container Deployment
+```
+
+---
