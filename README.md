@@ -2710,3 +2710,583 @@ This makes the image **very small and secure**.
 
 Multi-Stage Build = Build tools in one stage, deploy only the compiled
 artifact in the final stage.
+
+
+
+# Docker Voting Application -- Architecture & Dockerfiles
+
+Repository:
+https://github.com/Sonal0409/Docker-Stack-VotingApp/tree/main/example-voting-app
+
+This project demonstrates a **microservices architecture using Docker
+containers**.
+
+The application is composed of multiple services that communicate with
+each other.
+
+------------------------------------------------------------------------
+
+# Application Architecture
+
+## System Flow
+
+The voting application consists of five main services:
+
+1.  Python Web Application
+2.  Redis Database
+3.  .NET Worker Service
+4.  PostgreSQL Database
+5.  Node.js Result Application
+
+## Flow Explanation
+
+1.  User accesses the Python voting web application
+2.  User submits a vote
+3.  Vote is temporarily stored in Redis
+4.  .NET Worker service reads votes from Redis
+5.  Worker processes votes and stores them in PostgreSQL
+6.  Node.js result application reads results from PostgreSQL
+7.  Results are displayed to users
+
+------------------------------------------------------------------------
+
+# Architecture Overview
+```
+  User
+  ↓ 
+  Python Vote App
+  ↓ 
+  Redis 
+  ↓ 
+  .NET Worker 
+  ↓ 
+  PostgreSQL 
+  ↓ 
+  Node.js Result App
+```
+------------------------------------------------------------------------
+# Python Voting Application Dockerfile (Multi-Stage)
+
+This Dockerfile is used to build the **Python voting application** in the Docker Voting App project.
+
+It uses a **multi-stage build** to:
+
+* Install dependencies in one stage
+* Use them in the final stage
+* Keep the final image cleaner and reproducible
+
+---
+
+# Stage 1 — Base Stage
+
+```dockerfile
+# Use official lightweight Python image
+FROM python:3.11-slim AS base
+
+# Set working directory inside the container
+# All commands will run relative to this directory
+WORKDIR /usr/local/app
+
+# Copy dependency file from host → container
+# requirements.txt contains all Python libraries needed by the application
+COPY requirements.txt ./requirements.txt
+
+# Install all Python dependencies listed in requirements.txt
+# pip installs packages such as Flask, Redis client, etc.
+RUN pip install -r requirements.txt
+```
+
+## Explanation
+
+### Base Image
+
+```
+python:3.11-slim
+```
+
+* Official Python image from Docker Hub
+* `slim` version = smaller size
+* Contains Python runtime and minimal OS libraries
+
+---
+
+### `AS base`
+
+```
+AS base
+```
+
+This names the stage **base**.
+
+Later stages can reuse it using:
+
+```
+FROM base
+```
+
+---
+
+### `WORKDIR`
+
+```
+WORKDIR /usr/local/app
+```
+
+Creates and switches to the directory:
+
+```
+/usr/local/app
+```
+
+Equivalent Linux commands:
+
+```
+mkdir -p /usr/local/app
+cd /usr/local/app
+```
+
+All future commands run inside this folder.
+
+---
+
+### Copy dependency file
+
+```
+COPY requirements.txt ./requirements.txt
+```
+
+Copies:
+
+```
+Host machine → Container
+requirements.txt → /usr/local/app/requirements.txt
+```
+
+Example content of `requirements.txt`:
+
+```
+Flask
+Redis
+gunicorn
+```
+
+---
+
+### Install dependencies
+
+```
+RUN pip install -r requirements.txt
+```
+
+Installs all Python libraries required by the application.
+
+Example:
+```
+| Package  | Purpose               |
+| -------- | --------------------- |
+| Flask    | Web framework         |
+| Redis    | Redis database client |
+| gunicorn | Production web server |
+```
+---
+
+# Stage 2 — Final Stage
+
+```dockerfile
+# Start a new stage based on the previous stage (base)
+# This stage already contains Python + installed dependencies
+FROM base AS final
+
+# Copy entire application code into container
+# Includes app.py and other project files
+COPY . .
+
+# Inform Docker that the container listens on port 80
+# (Documentation purpose only)
+EXPOSE 80
+
+# Command executed when the container starts
+# Runs Gunicorn web server and loads the Flask application
+CMD ["gunicorn", "app:app", "-b", "0.0.0.0:80", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0"]
+```
+
+---
+
+# Explanation
+
+## `FROM base AS final`
+
+Instead of rebuilding everything again, this stage **reuses the base stage**.
+
+So the container already contains:
+
+* Python runtime
+* Installed dependencies
+* required libraries
+
+This saves build time.
+
+---
+
+## Copy application code
+
+```
+COPY . .
+```
+
+Copies all project files from host to container:
+
+Example:
+
+```
+app.py
+requirements.txt
+templates/
+static/
+```
+
+Now the container has the full Python application.
+
+---
+
+# `EXPOSE 80`
+
+```
+EXPOSE 80
+```
+
+Indicates that the application runs on port **80**.
+
+Important:
+
+* This does **not publish the port**
+* It is only documentation for Docker.
+
+Port is published using:
+
+```
+docker run -p 8080:80 image
+```
+
+---
+
+# `CMD` — Start the Application
+
+```
+CMD ["gunicorn", "app:app", "-b", "0.0.0.0:80", "--log-file", "-", "--access-logfile", "-", "--workers", "4", "--keep-alive", "0"]
+```
+
+This starts the **Gunicorn web server**.
+
+---
+
+## Gunicorn Breakdown
+
+### Run gunicorn
+
+```
+gunicorn
+```
+
+Gunicorn is a **production-grade Python web server**.
+
+---
+
+### Application location
+
+```
+app:app
+```
+
+Format:
+
+```
+file_name:object_name
+```
+
+Meaning:
+
+```
+app.py → file
+app → Flask application object
+```
+
+Example Python code:
+
+```python
+app = Flask(__name__)
+```
+
+---
+
+### Bind server to port
+
+```
+-b 0.0.0.0:80
+```
+
+Means:
+
+```
+Listen on all network interfaces
+Use port 80
+```
+
+So the application becomes accessible from outside the container.
+
+---
+
+### Logging
+
+```
+--log-file -
+```
+
+Send logs to **stdout**.
+
+```
+--access-logfile -
+```
+
+Send request logs to **stdout**.
+
+Why?
+
+Because Docker best practice is:
+
+```
+Application logs → STDOUT
+```
+
+Then logs can be viewed using:
+
+```
+docker logs <container>
+```
+
+---
+
+### Workers
+
+```
+--workers 4
+```
+
+Starts **4 worker processes**.
+
+This allows multiple users to access the application simultaneously.
+
+Example:
+
+```
+User1 → Worker1
+User2 → Worker2
+User3 → Worker3
+User4 → Worker4
+```
+
+---
+
+### Keep Alive
+
+```
+--keep-alive 0
+```
+
+Closes connection immediately after request.
+
+Good for high-throughput containerized workloads.
+
+---
+
+# Example Run Command
+
+Build image:
+
+```
+docker build -t voting-app .
+```
+
+Run container:
+
+```
+docker run -p 8080:80 voting-app
+```
+
+Access application:
+
+```
+http://localhost:8080
+```
+
+---
+
+# Flow Inside Container
+
+```
+Container Starts
+        ↓
+CMD executes
+        ↓
+Gunicorn starts
+        ↓
+Loads Flask app (app.py)
+        ↓
+Application listens on port 80
+        ↓
+Users can access the voting app
+```
+
+---
+
+# Key DevOps Concepts Demonstrated
+
+* Multi-stage Docker build
+* Dependency caching
+* Production web server (Gunicorn)
+* Container logging best practices
+* Scalable Python web service
+
+---
+
+# One-Line Summary
+
+```
+Stage 1 → Install Python dependencies
+Stage 2 → Copy app and run Gunicorn server
+```
+
+---
+
+
+
+------------------------------------------------------------------------
+
+# .NET Worker Dockerfile (Multi‑Stage)
+
+Stage 1 -- Build Stage
+
+``` dockerfile
+FROM mcr.microsoft.com/dotnet/sdk:7.0 as build
+
+WORKDIR /App
+
+COPY . ./
+
+RUN dotnet publish -c release -o out
+```
+
+Explanation:
+
+-   Uses full .NET SDK to compile code
+-   Produces compiled artifact **Worker.dll**
+
+------------------------------------------------------------------------
+
+Stage 2 -- Runtime Stage
+
+``` dockerfile
+FROM mcr.microsoft.com/dotnet/runtime:7.0
+
+WORKDIR /app
+
+COPY --from=build /App/out .
+
+ENTRYPOINT ["dotnet", "Worker.dll"]
+```
+
+Explanation:
+
+Only runtime dependencies are included.
+
+Benefits:
+
+-   Smaller image
+-   No build tools
+-   Faster deployment
+
+------------------------------------------------------------------------
+# Node.js Result Application Dockerfile
+
+``` dockerfile
+FROM node:18-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl tini && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/local/app
+
+RUN npm install -g nodemon
+
+COPY package*.json ./
+
+RUN npm ci && \
+    npm cache clean --force && \
+    mv /usr/local/app/node_modules /node_modules
+
+COPY . .
+
+ENV PORT 80
+EXPOSE 80
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "server.js"]
+```
+
+## Explanation
+
+### Base Image
+
+Uses Node.js slim image to keep container lightweight.
+
+### Install Tools
+
+-   curl → health checks
+-   tini → proper container init process
+
+### Working Directory
+
+Application code runs from `/usr/local/app`.
+
+### Dependency Installation
+
+`npm ci` installs dependencies based on package-lock.json.
+
+### ENTRYPOINT + CMD
+
+Actual execution becomes:
+
+tini -- node server.js
+
+
+------------------------------------------------------------------------
+
+# Key DevOps Concepts Demonstrated
+
+This project demonstrates:
+
+-   Microservices architecture
+-   Multi-stage Docker builds
+-   Different language runtimes
+-   Container communication
+-   Production container best practices
+
+------------------------------------------------------------------------
+
+# Summary
+```
+  Service      Technology     Purpose
+  ------------ -------------- ------------------------
+  Vote         Python         Accept user votes
+  Redis        In-memory DB   Temporary vote storage
+  Worker       .NET           Process votes
+  PostgreSQL   Database       Store final results
+  Result       Node.js        Display voting results
+```
+------------------------------------------------------------------------
+
+# Key Learning
+
+Multiple containers can work together to form a **complete application
+system using Docker**.
