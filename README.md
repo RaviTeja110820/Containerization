@@ -3564,12 +3564,12 @@ This pipeline performs the following steps:
 ```groovy id="gr7e5x"
 pipeline{
 
-    # Jenkins can run the pipeline on any available agent/node
+    // Jenkins can run the pipeline on any available agent/node
     agent any
 
-    # Define tools required for the pipeline
+    // Define tools required for the pipeline
     tools{
-        # Use Maven tool configured in Jenkins global tools
+        // Use Maven tool configured in Jenkins global tools
         maven 'mymaven'
     }
 
@@ -3577,24 +3577,24 @@ pipeline{
 
         stage('clone the repo'){
             steps{
-                # Clone source code from GitHub repository
+                // Clone source code from GitHub repository
                 git 'https://github.com/Sonal0409/DevOpsCodeDemo.git'
             }
         }
 
         stage('Build Code'){
             steps{
-                # Build Java project using Maven
-                # clean -> removes previous build artifacts
-                # package -> creates WAR file
+                // Build Java project using Maven
+                // clean -> removes previous build artifacts
+                // package -> creates WAR file
                 sh 'mvn clean package'
             }
         }
 
         stage('Build Image'){
             steps{
-                # Build Docker image from Dockerfile in repository
-                # -t assigns a tag/name to the image
+                // Build Docker image from Dockerfile in repository
+                // -t assigns a tag/name to the image
                 sh 'docker build -t myjavajenkins .'
             }
         }
@@ -3602,30 +3602,30 @@ pipeline{
         stage('login and push Image'){
             steps{
 
-                # Use Jenkins credentials stored securely
-                # DOCKERHUB_TOKEN is stored in Jenkins credentials manager
+                // Use Jenkins credentials stored securely
+                // DOCKERHUB_TOKEN is stored in Jenkins credentials manager
                 withCredentials([string(credentialsId: 'DOCKERHUB_TOKEN', variable: 'DOCKERHUB_PASSWORD')]) {
 
-                    # Login to DockerHub
-                    # Password is taken securely from Jenkins credential store
-                    sh 'docker login -u sonal04 -p ${DOCKERHUB_PASSWORD}'
+                    // Login to DockerHub
+                    // Password is taken securely from Jenkins credential store
+                    sh 'docker login -u ravteja -p ${DOCKERHUB_PASSWORD}'
                 }
 
-                # Tag image with DockerHub repository name
-                sh 'docker tag myjavajenkins sonal04/myjavajenkins'
+                // Tag image with DockerHub repository name
+                sh 'docker tag myjavajenkins ravteja/myjavajenkins'
 
-                # Push image to DockerHub registry
-                sh 'docker push sonal04/myjavajenkins'
+                // Push image to DockerHub registry
+                sh 'docker push ravteja/myjavajenkins'
             }
         }
 
         stage('Deploy the Image'){
             steps{
 
-                # Run the container in detached mode
-                # -d runs container in background
-                # -P maps container ports automatically to host ports
-                sh 'docker run -d -P sonal04/myjavajenkins'
+                // Run the container in detached mode
+                // -d runs container in background
+                // -P maps container ports automatically to host ports
+                sh 'docker run -d -P ravteja/myjavajenkins'
             }
         }
 
