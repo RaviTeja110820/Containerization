@@ -4112,7 +4112,7 @@ GitHub Push → GitHub Actions → Maven Build → Docker Image → DockerHub
 ```
 
 ---
-
+------------------------
 # Docker Network – Class Summary
 
 Docker networking allows containers to communicate with:
@@ -4135,7 +4135,7 @@ Main network types:
 | Custom Bridge    | User-defined network with DNS support   |
 | Host             | Container uses host network directly    |
 | None             | Container has no network                |
-``
+```
 ---
 
 # Default Bridge Network (docker0)
