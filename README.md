@@ -4663,3 +4663,473 @@ none → no networking
 ```
 
 ---
+
+
+
+# Docker Compose – Session Notes
+
+## Main Topic
+
+Docker Compose is a tool used to **define and run multi-container Docker applications** using a **YAML configuration file**.
+
+Instead of running many `docker run` commands manually, Docker Compose lets you define the entire application stack in a **single file**.
+
+Example:
+
+```id="d3w7dp"
+docker-compose.yml
+```
+
+This file describes:
+
+* containers (services)
+* networks
+* volumes
+* environment variables
+
+---
+
+# Why Docker Compose?
+
+Without Docker Compose:
+
+```bash id="v2m7p3"
+docker run ...
+docker run ...
+docker run ...
+docker run ...
+```
+
+You must manually manage:
+
+* container networking
+* volumes
+* environment variables
+* startup order
+
+With Docker Compose:
+
+```bash id="9s7nys"
+docker compose up -d
+```
+
+Docker automatically creates and runs the entire application.
+
+---
+
+# Docker Compose File Structure
+
+A typical `docker-compose.yml` contains three main sections:
+
+```id="9gqu1s"
+networks:
+volumes:
+services:
+```
+
+---
+
+# Networks Section
+
+Creates custom networks.
+
+Example:
+
+```yaml id="akd28x"
+networks:
+  mynet1:
+```
+
+Explanation:
+
+* Docker creates a **custom bridge network**
+* Containers inside the network communicate using **container names**
+
+Example communication:
+
+```id="1s93ea"
+wordpress container → mysql container
+```
+
+Instead of using IP:
+
+```id="fsyl78"
+172.18.0.2
+```
+
+We use container name:
+
+```id="6khega"
+db
+```
+
+---
+
+# Volumes Section
+
+Creates persistent storage.
+
+Example:
+
+```yaml id="pybr89"
+volumes:
+  myvol:
+```
+
+Docker stores volumes here:
+
+```id="eifcqu"
+/var/lib/docker/volumes
+```
+
+Purpose:
+
+* store database data
+* keep files after container deletion
+
+---
+
+# Services Section
+
+Defines application containers.
+
+Example:
+
+```yaml id="d8xxju"
+services:
+```
+
+Each service represents **one container**.
+
+Example microservices:
+
+* MySQL
+* WordPress
+* Node.js
+* Redis
+* Nginx
+
+---
+
+# Common Service Parameters
+```
+| Parameter      | Purpose                      |
+| -------------- | ---------------------------- |
+| image          | Docker image name            |
+| container_name | Name of container            |
+| ports          | Port mapping                 |
+| networks       | Attach container to network  |
+| volumes        | Mount storage                |
+| environment    | Environment variables        |
+| depends_on     | Start container dependency   |
+| restart        | Restart policy               |
+| build          | Build image using Dockerfile |
+```
+---
+
+# Key Docker Compose Commands
+
+### Start containers
+
+```bash id="so7c79"
+docker compose up -d
+```
+
+Creates and starts containers in **detached mode**.
+
+---
+
+### Build images and start
+
+```bash id="r0g9tp"
+docker compose up --build
+```
+
+Builds Dockerfile images before starting containers.
+
+---
+
+### Stop and remove containers
+
+```bash id="y7g2h3"
+docker compose down
+```
+
+---
+
+### Remove containers and volumes
+
+```bash id="66fnj9"
+docker compose down -v
+```
+
+---
+
+### Check running services
+
+```bash id="kkr9b4"
+docker compose ps
+```
+
+---
+
+# Environment Variables
+
+Variables can be stored in `.env`.
+
+Example:
+
+```id="cw9b6t"
+MYSQL_PASSWORD=password
+```
+
+Used in YAML like:
+
+```id="3yea0o"
+${MYSQL_PASSWORD}
+```
+
+Benefits:
+
+* hides sensitive data
+* keeps compose file clean
+* supports different environments
+
+---
+
+# WordPress + MySQL Example
+
+## docker-compose.yml
+
+```yaml id="pfowm7"
+# create a custom bridge network
+networks:
+  mynet1:
+
+# create named volume for mysql data persistence
+volumes:
+  myvol:
+
+# define containers
+services:
+
+  # MySQL database container
+  db:
+    image: mysql
+
+    # connect container to custom network
+    networks:
+      - mynet1
+
+    # environment variables for mysql setup
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+
+    # mount persistent volume
+    volumes:
+      - myvol:/var/lib/mysql
+
+    # always restart container if stopped
+    restart: always
+
+
+  # WordPress web application container
+  myweb:
+
+    # ensure database starts first
+    depends_on:
+      - db
+
+    image: wordpress
+
+    # attach to same network
+    networks:
+      - mynet1
+
+    # expose wordpress on port 8282
+    ports:
+      - 8282:80
+
+    # wordpress database configuration
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+```
+
+---
+
+# .env File
+
+```bash id="a7r7vu"
+# MySQL root password
+MYSQL_ROOT_PASSWORD=password
+
+# WordPress database user password
+MYSQL_PASSWORD=wordpress
+
+# WordPress DB password
+WORDPRESS_DB_PASSWORD=wordpress
+```
+
+---
+
+# Run Application
+
+```bash id="qk1yzz"
+docker compose up -d
+```
+
+Access WordPress:
+
+```id="s3nsmc"
+http://<server-ip>:8282
+```
+
+---
+
+# WordPress Architecture Flow
+
+```id="h9y06k"
+User
+ │
+ ▼
+WordPress Container
+ │
+ │ (network communication)
+ ▼
+MySQL Container
+ │
+ ▼
+Docker Volume (persistent storage)
+```
+
+---
+
+# Node.js Application Example
+
+Clone repository:
+
+```bash id="rxyy1n"
+git clone https://github.com/Sonal0409/nodejsappDockerfile.git
+cd nodejsappDockerfile
+```
+
+---
+
+# docker-compose.yml
+
+```yaml id="mq1t8y"
+# custom bridge network
+networks:
+  mynet1:
+
+# persistent storage volume
+volumes:
+  myvol:
+
+services:
+
+  # Node.js application container
+  mynodeapp:
+
+    # build image using Dockerfile in current directory
+    build: .
+
+    # image name
+    image: mynodeimage
+
+    # expose application
+    ports:
+      - 8989:80
+
+    # attach to network
+    networks:
+      - mynet1
+
+    # mount volume
+    volumes:
+      - myvol:/tmp
+```
+
+---
+
+# Build and Run
+
+```bash id="sy22hn"
+docker compose up --build -d
+```
+
+Access Node.js app:
+
+```id="0z36js"
+http://<server-ip>:8989
+```
+
+---
+
+# Node.js Application Flow
+
+```id="7fvg0r"
+User
+ │
+ ▼
+Node.js Container
+ │
+ ▼
+Docker Volume (/tmp)
+```
+
+---
+
+# Advantages of Docker Compose
+
+* easy multi-container deployment
+* simple YAML configuration
+* reproducible environments
+* version controlled
+* easier microservice management
+
+---
+
+# Real DevOps Workflow
+
+```id="90u6g2"
+Developer writes docker-compose.yml
+        │
+        ▼
+Push to Git repository
+        │
+        ▼
+CI/CD pipeline runs
+        │
+        ▼
+docker compose up
+        │
+        ▼
+Application deployed
+```
+
+---
+
+# Future Topics
+
+Next topics after Docker Compose:
+
+* Docker Swarm
+* Docker Stack
+* Kubernetes
+
+---
+
+# One-Line Summary
+
+```id="pg1fuy"
+Docker Compose = Define and run multi-container applications using a single YAML file
+```
+
+---
