@@ -5133,3 +5133,478 @@ Docker Compose = Define and run multi-container applications using a single YAML
 ```
 
 ---
+
+# Docker Swarm – Class Notes
+
+## What is Docker Swarm?
+
+Docker Swarm is Docker’s **native container orchestration platform**.
+It allows multiple Docker hosts (virtual machines) to work together as a **single cluster**.
+
+Swarm manages:
+
+* container deployment
+* scaling
+* load balancing
+* high availability
+* rolling updates
+
+---
+
+# Why Container Orchestration?
+
+When applications grow, we may run **many containers across multiple servers**.
+
+Managing them manually becomes difficult.
+
+Example problem without orchestration:
+
+```
+Server1 → 3 containers
+Server2 → 2 containers
+Server3 → 1 container
+```
+
+Problems:
+
+* uneven load distribution
+* manual scaling
+* container failures
+
+Container orchestration tools solve this.
+
+---
+
+# Container Orchestration Features
+
+## Replicas
+
+Run multiple copies of the same container.
+
+Example:
+
+```
+Nginx Service
+   │
+   ├── Container 1
+   ├── Container 2
+   ├── Container 3
+   └── Container 4
+```
+
+---
+
+## Distribution
+
+Containers are distributed across multiple machines.
+
+Example:
+
+```
+Cluster
+
+Node1 → Container A
+Node2 → Container B
+Node3 → Container C
+```
+
+---
+
+## Load Balancing
+
+Incoming requests are distributed across replicas.
+
+```
+User Request
+      │
+      ▼
+Load Balancer
+ │    │    │
+ ▼    ▼    ▼
+C1    C2    C3
+```
+
+---
+
+## Scaling
+
+Increase or decrease container replicas.
+
+Example:
+
+```
+Scale Up  → 3 → 6 containers
+Scale Down → 6 → 2 containers
+```
+
+---
+
+## High Availability
+
+If a container stops, Swarm automatically recreates it.
+
+Example:
+
+```
+Desired replicas: 6
+Running replicas: 5
+
+Swarm automatically creates → new container
+```
+
+---
+
+## Rolling Updates
+
+Update containers **without downtime**.
+
+Example:
+
+```
+v1 → v2 update
+
+C1 (v1) → update → v2
+C2 (v1) → update → v2
+C3 (v1) → update → v2
+```
+
+---
+
+# Swarm Cluster Architecture
+
+Docker Swarm consists of two types of nodes:
+```
+| Node Type | Role             |
+| --------- | ---------------- |
+| Manager   | Controls cluster |
+| Worker    | Runs containers  |
+```
+---
+
+## Swarm Architecture Diagram
+
+```
+            Manager Node
+        (Cluster Controller)
+               │
+       ┌───────┼────────┐
+       ▼       ▼        ▼
+   Worker1  Worker2  Worker3
+      │        │        │
+  Containers Containers Containers
+```
+
+---
+
+# Docker Networking in Swarm
+
+Docker Swarm uses **overlay networks**.
+
+Overlay network allows containers across **multiple virtual machines** to communicate.
+
+```
+VM1 Container
+      │
+Overlay Network
+      │
+VM2 Container
+```
+
+---
+
+# Swarm Setup
+
+## Step 1 – Configure Manager Node
+
+```bash
+# change hostname to MANAGER
+hostname MANAGER
+
+# switch to root user
+sudo su -
+
+# initialize swarm cluster
+docker swarm init
+```
+
+Explanation:
+
+```
+docker swarm init
+```
+
+* converts the machine into a **manager node**
+* creates a swarm cluster
+
+Output will show a **join token**.
+
+Example:
+
+```bash
+docker swarm join --token SWMTKN-1-xxxxx 172.31.41.114:2377
+```
+
+---
+
+# Step 2 – Join Worker Nodes
+
+On Worker1 and Worker2 machines:
+
+```bash
+# switch to root user
+sudo su -
+
+# run the join command copied from manager
+docker swarm join --token SWMTKN-xxxxx 172.31.41.114:2377
+```
+
+Now the nodes join the cluster.
+
+---
+
+# Step 3 – Verify Cluster
+
+On the manager node:
+
+```bash
+docker node ls
+```
+
+Example output:
+
+```
+ID      HOSTNAME   STATUS
+abc123  MANAGER    Ready
+def456  Worker1    Ready
+ghi789  Worker2    Ready
+```
+
+---
+
+# Swarm Service Demo – Example 1
+
+Create a service with **6 replicas**.
+
+```bash
+# create service named mysvc
+# deploy 6 replicas of nginx
+docker service create --name mysvc --replicas 6 nginx
+```
+
+Explanation:
+
+```
+--replicas 6
+```
+
+Creates 6 containers.
+
+Swarm distributes them across cluster nodes.
+
+---
+
+Check running services:
+
+```bash
+docker service ls
+```
+
+---
+
+Check replica containers:
+
+```bash
+docker service ps mysvc
+```
+
+---
+
+# High Availability Demo
+
+Go to any worker node and delete a container:
+
+```bash
+# remove container manually
+docker rm -f <containerid>
+```
+
+Now check service on manager:
+
+```bash
+docker service ls
+```
+
+Observation:
+
+```
+Desired replicas = 6
+Running replicas = 6
+```
+
+Swarm automatically recreates the missing container.
+
+---
+
+# Scaling Services
+
+Docker Swarm supports **manual scaling**.
+
+## Scale Up
+
+```bash
+# increase replicas to 7
+docker service scale mysvc=7
+```
+
+---
+
+## Scale Down
+
+```bash
+# reduce replicas to 2
+docker service scale mysvc=2
+```
+
+---
+
+# Delete Service
+
+```bash
+# remove service
+docker service rm mysvc
+```
+
+All replicas will also be deleted.
+
+---
+
+# Deploy Custom Image Service
+
+Create service using your own Docker image.
+
+```bash
+docker service create \
+# service name
+--name mysvc \
+# publish port
+-p 8181:3000 \
+# number of replicas
+--replicas 4 \
+# docker image
+sonal04/samplepyapp:v1
+```
+
+---
+
+# Test Load Balancing
+
+Run this command:
+
+```bash
+# continuously send requests to service
+while true; do
+# call application
+curl http://localhost:8181
+# wait 1 second
+sleep 1
+# print blank line
+echo " "
+done
+```
+
+Observation:
+
+Requests are served by **different replicas**.
+
+Example output:
+
+```
+Response from container1
+Response from container2
+Response from container3
+```
+
+This proves **load balancing is working**.
+
+---
+
+# Scaling Example
+
+Scale up:
+
+```bash
+docker service scale mysvc=6
+```
+
+Scale down:
+
+```bash
+docker service scale mysvc=3
+```
+
+---
+
+# Rolling Updates
+
+Update service image version.
+
+```bash
+# update service image
+docker service update \
+--image sonal04/samplepyapp:v2 \
+mysvc
+```
+
+Swarm updates containers **one by one**.
+
+---
+
+# Rollback
+
+If update fails:
+
+```bash
+docker service rollback mysvc
+```
+
+Swarm restores the previous version.
+
+---
+
+# Swarm Workflow Diagram
+
+```
+Developer deploys service
+          │
+          ▼
+Manager schedules containers
+          │
+          ▼
+Containers distributed to worker nodes
+          │
+          ▼
+Users access service via load balancer
+```
+
+---
+
+# Summary
+
+Docker Swarm provides:
+
+* container orchestration
+* automatic scheduling
+* load balancing
+* scaling
+* high availability
+* rolling updates
+
+---
+
+# One-Line Summary
+
+```
+Docker Swarm = Cluster of Docker nodes that run and manage containers automatically
+```
+
+---
