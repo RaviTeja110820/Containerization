@@ -5608,3 +5608,363 @@ Docker Swarm = Cluster of Docker nodes that run and manage containers automatica
 ```
 
 ---
+
+
+# Docker Swarm – Manager, Worker, Overlay Network & VXLAN
+
+This document explains how **Docker Swarm nodes communicate** using:
+
+* Manager node
+* Worker nodes
+* Overlay network
+* VXLAN tunneling
+
+---
+
+# Swarm Cluster Architecture
+
+When Docker Swarm is initialized, a **cluster of machines** is formed.
+
+There are two main node types:
+```
+| Node         | Role                   |
+| ------------ | ---------------------- |
+| Manager Node | Controls orchestration |
+| Worker Nodes | Run containers         |
+```
+---
+
+# Swarm Architecture Diagram
+
+```
+                MANAGER NODE
+            (Cluster Controller)
+                   │
+           docker swarm init
+                   │
+                TOKEN
+                   │
+        ┌──────────┴──────────┐
+        ▼                     ▼
+     WORKER 1             WORKER 2
+   (docker join)         (docker join)
+        │                     │
+    Containers             Containers
+```
+
+---
+
+# Manager Node
+
+Manager node controls the entire swarm cluster.
+
+Responsibilities:
+
+* Runs orchestration commands
+* Maintains cluster state
+* Schedules containers
+* Monitors worker nodes
+
+Manager uses **RAFT algorithm**.
+
+### RAFT Algorithm
+
+RAFT is a **consensus algorithm** that keeps cluster state consistent.
+
+Responsibilities:
+
+* tracks worker nodes
+* manages container deployment
+* ensures desired container count
+
+Example tasks:
+
+```
+User requests 5 containers
+Manager schedules containers across workers
+Manager ensures 5 containers are always running
+```
+
+---
+
+# Worker Nodes
+
+Worker nodes run application containers.
+
+Characteristics:
+
+* do not run orchestration commands
+* receive tasks from manager
+* execute container workloads
+
+Example:
+
+```
+Manager decides:
+Deploy 6 containers
+
+Worker1 → runs 3 containers
+Worker2 → runs 3 containers
+```
+
+---
+
+# Swarm Join Token
+
+When swarm is initialized:
+
+```bash
+docker swarm init
+```
+
+Docker generates a **join token**.
+
+Example:
+
+```bash
+docker swarm join --token <token> <manager-ip>:2377
+```
+
+Purpose:
+
+* securely join workers to swarm cluster
+* authenticate nodes
+
+---
+
+# Overlay Network
+
+Overlay network allows **containers on different machines to communicate**.
+
+Example:
+
+```
+Worker1 Container
+       │
+       │ overlay network
+       │
+Worker2 Container
+```
+
+Features:
+
+* automatic creation when swarm starts
+* containers communicate across hosts
+* containers get IP addresses inside overlay network
+
+---
+
+# Overlay Network Communication
+
+```
+Container (Worker1)
+       │
+       ▼
+Overlay Network
+       │
+       ▼
+Container (Worker2)
+```
+
+Containers behave **as if they are on the same network**.
+
+---
+
+# VXLAN Technology
+
+Docker overlay networks use **VXLAN**.
+
+VXLAN = Virtual Extensible LAN.
+
+VXLAN acts like a **secure tunnel between machines**.
+
+Purpose:
+
+```
+connect containers across different hosts
+```
+
+---
+
+# VXLAN Tunnel Concept
+
+```
+Worker1
+ Container web1
+      │
+      │
+ VXLAN Tunnel
+      │
+      │
+Worker2
+ Container web2
+```
+
+The request travels through a **virtual tunnel**.
+
+---
+
+# Example Scenario
+
+```
+Worker1 → web1 container
+Worker2 → web2 container
+```
+
+web1 needs to send request to web2.
+
+---
+
+# Request Flow Using VXLAN
+
+Step 1:
+
+```
+web1 generates request
+```
+
+Step 2:
+
+```
+Docker captures request
+```
+
+Step 3:
+
+```
+Docker wraps request into VXLAN packet
+```
+
+Step 4:
+
+```
+Request travels through host network
+```
+
+Step 5:
+
+```
+Worker2 receives VXLAN packet
+```
+
+Step 6:
+
+```
+Docker unwraps packet
+```
+
+Step 7:
+
+```
+Request delivered to web2 container
+```
+
+---
+
+# Request Flow Diagram
+
+```
+web1 container
+   (Worker1)
+       │
+       ▼
+Docker Engine
+       │
+       ▼
+VXLAN Tunnel
+       │
+       ▼
+Docker Engine
+       │
+       ▼
+web2 container
+   (Worker2)
+```
+
+---
+
+# Real Network Path
+
+Actual network path:
+
+```
+web1 container
+      │
+      ▼
+Docker Overlay Network
+      │
+      ▼
+VXLAN Encapsulation
+      │
+      ▼
+Host Network
+      │
+      ▼
+Worker2 Host
+      │
+      ▼
+VXLAN Decapsulation
+      │
+      ▼
+web2 container
+```
+
+---
+
+# Key Benefits of Overlay Network
+
+* cross-host container communication
+* automatic networking setup
+* secure container tunnels
+* scalable microservice communication
+
+---
+
+# Example Swarm Service Deployment
+
+```bash
+# create service with 3 replicas
+docker service create --name web --replicas 3 nginx
+```
+
+Docker automatically:
+
+* distributes containers across nodes
+* attaches containers to overlay network
+
+---
+
+# Container Communication Example
+
+```
+Service: web
+
+Replica1 → Worker1
+Replica2 → Worker2
+Replica3 → Worker1
+```
+
+All replicas communicate using overlay network.
+
+---
+
+# Summary
+
+Docker Swarm cluster consists of:
+```
+| Component       | Purpose                               |
+| --------------- | ------------------------------------- |
+| Manager         | Cluster controller                    |
+| Worker          | Runs containers                       |
+| Overlay Network | Connects containers across hosts      |
+| VXLAN           | Creates virtual tunnels between nodes |
+```
+---
+
+# One-Line Summary
+
+```
+Docker Swarm uses Overlay Networks and VXLAN tunnels to allow containers on different machines to communicate securely.
+```
+
+---
