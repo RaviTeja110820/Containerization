@@ -5968,3 +5968,1269 @@ Docker Swarm uses Overlay Networks and VXLAN tunnels to allow containers on diff
 ```
 
 ---
+----------------------------------------------------------------------
+# Docker Stack
+
+## Introduction
+
+Docker Stack is a feature used to **deploy and manage multiple services in a Docker Swarm cluster**.
+
+It combines:
+
+```
+Docker Swarm + Docker Compose
+        ↓
+      Docker Stack
+        ↓
+  Stack of Services
+```
+
+Docker Stack allows us to deploy **multi-container applications across multiple machines** using a **single YAML file**.
+
+---
+
+# Concept of Docker Stack
+
+Docker Stack works by using a **YAML configuration file** similar to Docker Compose.
+
+In this YAML file, we define:
+
+* service definitions
+* container images
+* replica count
+* networks
+* volumes
+* ports
+* dependencies
+
+Docker Swarm then uses this file to deploy the services **across the cluster nodes**.
+
+---
+
+# Docker Stack Architecture
+
+```
+Docker Swarm Cluster
+
+Manager Node
+      │
+      │ deploy stack
+      ▼
+ ┌───────────────┐
+ │ Docker Stack  │
+ └───────────────┘
+      │
+      ▼
+ ┌───────────────┐
+ │ Service 1     │
+ │ Service 2     │
+ │ Service 3     │
+ └───────────────┘
+      │
+      ▼
+Containers distributed across worker nodes
+```
+
+---
+
+# How Docker Stack Works
+
+### Step 1 – Create YAML file
+
+We write a **Compose-style YAML file** describing services.
+
+Example:
+
+```yaml
+version: "3"
+
+services:
+  web:
+    image: nginx
+    ports:
+      - "80:80"
+    deploy:
+      replicas: 3
+```
+
+---
+
+### Step 2 – Deploy stack
+
+```bash
+docker stack deploy -c docker-compose.yml mystack
+```
+
+Explanation:
+
+```
+docker stack deploy
+```
+
+Deploys services to the **Docker Swarm cluster**.
+
+```
+-c docker-compose.yml
+```
+
+Specifies the configuration file.
+
+```
+mystack
+```
+
+Name of the stack.
+
+---
+
+# Stack Deployment Flow
+
+```
+docker-compose.yml
+        │
+        ▼
+docker stack deploy
+        │
+        ▼
+Docker Swarm Manager
+        │
+        ▼
+Services Created
+        │
+        ▼
+Containers Distributed Across Nodes
+```
+
+---
+
+# Example Stack Deployment
+
+### docker-compose.yml
+
+```yaml
+version: "3"
+
+services:
+  web:
+    image: nginx
+    deploy:
+      replicas: 3
+    ports:
+      - "8080:80"
+```
+
+---
+
+### Deploy Stack
+
+```bash
+docker stack deploy -c docker-compose.yml mystack
+```
+
+---
+
+### List stacks
+
+```bash
+docker stack ls
+```
+
+---
+
+### View services inside stack
+
+```bash
+docker stack services mystack
+```
+
+---
+
+### View containers inside stack
+
+```bash
+docker stack ps mystack
+```
+
+---
+
+### Remove stack
+
+```bash
+docker stack rm mystack
+```
+
+---
+
+# Difference Between Docker Compose and Docker Stack
+```
+| Feature     | Docker Compose    | Docker Stack           |
+| ----------- | ----------------- | ---------------------- |
+| Environment | Single host       | Swarm cluster          |
+| Command     | docker compose up | docker stack deploy    |
+| Scaling     | Manual            | Built-in orchestration |
+| Use case    | Development       | Production             |
+```
+---
+
+# Why Docker Stack?
+
+Benefits:
+
+* deploy multi-service applications
+* manage containers across multiple nodes
+* automatic load balancing
+* built-in scaling
+* high availability
+
+---
+
+# Example Real Application Stack
+
+Example microservices architecture:
+
+```
+Stack: ecommerce
+
+Service1 → frontend
+Service2 → backend API
+Service3 → database
+Service4 → redis cache
+```
+
+Docker Swarm distributes containers across nodes.
+
+---
+
+# Docker Stack Workflow
+
+```
+Developer writes docker-compose.yml
+          │
+          ▼
+docker stack deploy
+          │
+          ▼
+Docker Swarm Manager
+          │
+          ▼
+Services Created
+          │
+          ▼
+Containers scheduled on worker nodes
+```
+
+---
+
+# One-Line Summary
+
+```
+Docker Stack = Deploy multi-service applications in a Docker Swarm cluster using a Compose YAML file.
+```
+
+---
+---------------------------------------------------------------------------------
+# Multi Microservice Architecture Application Deployment (Docker Swarm Stack)
+
+This document explains how a **multi-service application** is deployed using:
+
+* Docker Swarm
+* Docker Stack
+* Overlay Networks
+* Volumes
+* Multiple Microservices
+
+The example is the **Docker Voting Application**.
+
+---
+
+# Application Architecture
+
+The application consists of **5 microservices**.
+```
+| Service     | Technology | Purpose                  |
+| ----------- | ---------- | ------------------------ |
+| Voting App  | Python     | Collect votes from users |
+| Redis       | Redis DB   | Temporary vote storage   |
+| Worker      | .NET       | Process votes            |
+| Postgres    | PostgreSQL | Store final results      |
+| Results App | Node.js    | Display voting results   |
+```
+---
+
+# Architecture Diagram
+
+```
+        Voting App (Python)
+           Port 5000
+               │
+               ▼
+           Redis DB
+               │
+               ▼
+           Worker App
+               │
+               ▼
+          PostgreSQL DB
+               │
+               ▼
+        Results App (NodeJS)
+           Port 5001
+```
+
+---
+
+# Network Design
+
+Two overlay networks are created.
+
+## Frontend Network
+
+Used by services handling user input.
+
+```
+Voting App
+    │
+    ▼
+Redis
+    │
+    ▼
+Worker
+```
+
+---
+
+## Backend Network
+
+Used for data processing and storage.
+
+```
+Worker
+   │
+   ▼
+PostgreSQL
+   │
+   ▼
+Results App
+```
+
+---
+
+# Volume
+
+PostgreSQL database uses a volume to **preserve data**.
+
+```
+Postgres Container
+        │
+        ▼
+Docker Volume
+   /var/lib/postgresql/data
+```
+
+---
+
+# Docker Stack YAML File
+
+File name:
+
+```
+myapp.yml
+```
+
+This file defines:
+
+* services
+* networks
+* volumes
+* scaling rules
+* restart policies
+
+---
+
+# YAML Configuration
+
+```yaml
+version: "3"
+
+services:
+
+  redis:
+    image: redis:alpine   # lightweight redis image
+    networks:
+      - frontend          # connect redis to frontend network
+
+    deploy:
+      replicas: 1         # run one redis container
+
+      update_config:
+        parallelism: 2    # update two containers at a time
+        delay: 10s        # delay between updates
+
+      restart_policy:
+        condition: on-failure  # restart if container crashes
+
+
+  db:
+    image: postgres:9.4   # postgres database image
+
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # mount volume to persist database data
+
+    environment:
+      POSTGRES_DB: "db"   # database name
+      POSTGRES_HOST_AUTH_METHOD: "trust"
+      # disables password authentication (demo purpose)
+
+    networks:
+      - backend           # database connected to backend network
+
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+        # ensures database runs only on manager node
+
+
+  vote:
+    image: dockersamples/examplevotingapp_vote:before
+    # python voting application
+
+    ports:
+      - 5000:80
+      # host port 5000 → container port 80
+
+    networks:
+      - frontend
+
+    depends_on:
+      - redis
+      # vote service requires redis
+
+    deploy:
+      replicas: 2
+      # run two containers for load balancing
+
+      update_config:
+        parallelism: 2
+
+      restart_policy:
+        condition: on-failure
+
+
+  result:
+    image: dockersamples/examplevotingapp_result:before
+    # nodejs result application
+
+    ports:
+      - 5001:80
+
+    networks:
+      - backend
+
+    depends_on:
+      - db
+
+    deploy:
+      replicas: 1
+
+      update_config:
+        parallelism: 2
+        delay: 10s
+
+      restart_policy:
+        condition: on-failure
+
+
+  worker:
+    image: dockersamples/examplevotingapp_worker
+    # .NET worker application
+
+    networks:
+      - frontend
+      - backend
+      # worker connects both networks
+
+    depends_on:
+      - db
+      - redis
+
+    deploy:
+      mode: replicated
+      replicas: 1
+
+      labels: [APP=VOTING]
+
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+
+      placement:
+        constraints: [node.role == manager]
+        # worker runs on manager node
+
+
+  visualizer:
+    image: dockersamples/visualizer:stable
+    # tool to visualize swarm cluster
+
+    ports:
+      - "8080:8080"
+
+    stop_grace_period: 1m30s
+
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      # allows visualizer to read docker swarm info
+
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+        # run visualizer on manager node
+
+
+networks:
+
+  frontend:   # overlay network for user-facing services
+
+  backend:    # overlay network for backend services
+
+
+volumes:
+
+  db-data:    # named volume for postgres database
+```
+
+---
+
+# Deploy Stack
+
+Run this command on the **manager node**.
+
+```bash
+# deploy stack using docker stack
+docker stack deploy -c myapp.yml myvotingapp
+```
+
+Explanation:
+
+```
+-c myapp.yml
+```
+
+Specifies the configuration file.
+
+```
+myvotingapp
+```
+
+Name of the stack.
+
+---
+
+# Check Running Services
+
+```bash
+docker service ls
+```
+
+Example output:
+
+```
+ID      NAME                 MODE        REPLICAS
+abc1    myvotingapp_vote     replicated  2/2
+abc2    myvotingapp_result   replicated  1/1
+abc3    myvotingapp_worker   replicated  1/1
+abc4    myvotingapp_redis    replicated  1/1
+abc5    myvotingapp_db       replicated  1/1
+```
+
+---
+
+# Access Applications
+
+Open browser:
+
+Vote application:
+
+```
+http://localhost:5000
+```
+
+Results dashboard:
+
+```
+http://localhost:5001
+```
+
+Cluster visualizer:
+
+```
+http://localhost:8080
+```
+
+---
+
+# Request Flow
+
+```
+User Vote
+   │
+   ▼
+Voting App (Python)
+   │
+   ▼
+Redis Database
+   │
+   ▼
+Worker (.NET)
+   │
+   ▼
+PostgreSQL
+   │
+   ▼
+Results App (NodeJS)
+```
+
+---
+
+# Summary
+
+This application demonstrates:
+
+* Microservice architecture
+* Docker Swarm orchestration
+* Docker Stack deployment
+* Overlay networking
+* Persistent storage with volumes
+
+---
+
+# One-Line Summary
+
+```
+Docker Stack deploys multiple microservices across a swarm cluster using a single YAML configuration file.
+```
+
+---
+---------------------------------------------------------------------------------
+
+# Docker Swarm – Failover Scenarios
+
+This document explains **failover behavior in a Docker Swarm cluster**.
+
+Failover means:
+
+```
+If a node or container fails,
+Docker Swarm automatically reschedules containers
+to maintain the desired number of replicas.
+```
+
+Docker Swarm ensures **high availability** by monitoring services and recreating containers when needed.
+
+---
+
+# Scenario 1 – Drain a Worker Node
+
+In this scenario we **drain a worker node**.
+
+Draining means:
+
+* The node **will not receive new containers**
+* Existing containers will be **moved to other nodes**
+
+---
+
+## Step 1 – Check Swarm Nodes
+
+```bash
+# list nodes in swarm cluster
+docker node ls
+```
+
+Example output:
+
+```
+ID      HOSTNAME    STATUS   AVAILABILITY
+abc123  manager     Ready    Active
+def456  worker1     Ready    Active
+ghi789  worker2     Ready    Active
+```
+
+---
+
+## Step 2 – Drain Worker Node
+
+```bash
+# mark worker node as drained
+docker node update --availability drain <nodeHostname>
+```
+
+Example:
+
+```bash
+docker node update --availability drain worker1
+```
+
+Explanation:
+
+```
+--availability drain
+```
+
+Means:
+
+* do not schedule new containers
+* move existing containers elsewhere
+
+---
+
+## Step 3 – Check Running Containers
+
+```bash
+# view running replicas of service
+docker service ps mysvc | grep Running
+```
+
+Observation:
+
+Containers that were running on **worker1** will be recreated on **other nodes**.
+
+---
+
+## Step 4 – Create a New Service
+
+```bash
+# create a new service with 2 replicas
+docker service create --name mysvc2 --replicas 2 nginx
+```
+
+Check where replicas are scheduled:
+
+```bash
+docker service ps mysvc2 | grep Running
+```
+
+Observation:
+
+```
+No containers are scheduled on the drained node.
+```
+
+All containers run on **active nodes only**.
+
+---
+
+## Step 5 – Reactivate Node
+
+Bring the node back to active state.
+
+```bash
+# enable scheduling again
+docker node update --availability active <hostname>
+```
+
+Example:
+
+```bash
+docker node update --availability active worker1
+```
+
+Now the node can receive containers again.
+
+---
+
+# Scenario 2 – Worker Node Failure
+
+In this scenario, a worker node **leaves the swarm cluster**.
+
+Docker Swarm automatically reschedules containers to maintain service availability.
+
+---
+
+## Step 1 – Remove Old Services
+
+```bash
+# remove services
+docker service rm mysvc mysvc2
+```
+
+---
+
+## Step 2 – Create New Services
+
+### Create Python Sample Application
+
+```bash
+# create service with 4 replicas
+docker service create \
+--name mysvc \
+-p 8181:3000 \
+--replicas 4 \
+sonal04/samplepyapp:v1
+```
+
+Check service replicas:
+
+```bash
+docker service ps mysvc
+```
+
+---
+
+### Create Nginx Service
+
+```bash
+# create another service
+docker service create \
+--name mysvc2 \
+--replicas 4 \
+nginx
+```
+
+Check replicas:
+
+```bash
+docker service ps mysvc2
+```
+
+---
+
+# Step 3 – Worker Node Leaves Swarm
+
+Go to **Worker1 node** and run:
+
+```bash
+# remove worker from swarm
+docker swarm leave
+```
+
+This node is now **not part of the cluster**.
+
+---
+
+# Step 4 – Check Node Status
+
+On **manager node**:
+
+```bash
+docker node ls
+```
+
+Example output:
+
+```
+worker1   Down
+worker2   Ready
+manager   Ready
+```
+
+Worker1 is now marked as **Down**.
+
+---
+
+# Step 5 – Remove Node from Cluster
+
+```bash
+# remove failed node from swarm
+docker node rm <nodeid>
+```
+
+Example:
+
+```bash
+docker node rm worker1
+```
+
+---
+
+# Step 6 – Observe Container Redistribution
+
+Check services again:
+
+```bash
+docker service ps mysvc | grep Running
+```
+
+```bash
+docker service ps mysvc2 | grep Running
+```
+
+Observation:
+
+```
+All replicas are redistributed across
+Manager node and Worker2 node.
+```
+
+Swarm maintains the **desired replica count**.
+
+---
+
+# Step 7 – Rejoin Worker Node
+
+On **manager node**, generate join token.
+
+```bash
+# get join token for worker
+docker swarm join-token worker
+```
+
+Example output:
+
+```bash
+docker swarm join --token <token> 192.168.1.10:2377
+```
+
+---
+
+# Step 8 – Join Worker Back to Swarm
+
+Run this command on **Worker1 node**.
+
+```bash
+# join worker back to cluster
+docker swarm join --token <token> <manager-ip>:2377
+```
+
+Now the node becomes part of the swarm cluster again.
+
+---
+
+# Failover Flow Diagram
+
+```
+Worker Node Failure
+        │
+        ▼
+Swarm detects node is down
+        │
+        ▼
+Manager reschedules containers
+        │
+        ▼
+Other nodes start new replicas
+        │
+        ▼
+Desired replica count maintained
+```
+
+---
+
+# Example Failover Architecture
+
+Before failure:
+
+```
+Manager
+   │
+   ├── Worker1 → 2 containers
+   └── Worker2 → 2 containers
+```
+
+After Worker1 failure:
+
+```
+Manager
+   │
+   └── Worker2 → 4 containers
+```
+
+Swarm ensures **no service downtime**.
+
+---
+
+# Key Concepts Demonstrated
+
+* Node draining
+* Service failover
+* Replica rescheduling
+* Cluster self-healing
+* Worker rejoining swarm
+
+---
+
+# One-Line Summary
+
+```
+Docker Swarm automatically redistributes containers across healthy nodes when a node is drained or fails.
+```
+
+---
+-------------------------------------------------------------------------------
+# Image Scanning for Vulnerabilities using Trivy
+
+## Introduction
+
+**Trivy** is an open-source security scanner developed by **Aqua Security**.
+
+It is used to scan:
+
+* Docker images
+* Container filesystems
+* Git repositories
+* Kubernetes clusters
+
+The main purpose of Trivy is to **detect security vulnerabilities** in container images.
+
+---
+
+# Why Image Scanning is Important
+
+Docker images often contain:
+
+* operating system packages
+* libraries
+* application dependencies
+
+These components may contain **security vulnerabilities (CVEs)**.
+
+If vulnerable images are deployed to production, they can lead to:
+
+* security breaches
+* privilege escalation
+* data leaks
+
+Therefore, **image scanning is an important step in DevSecOps pipelines**.
+
+---
+
+# What Trivy Detects
+
+Trivy scans images and reports:
+```
+| Type                     | Description                       |
+| ------------------------ | --------------------------------- |
+| OS vulnerabilities       | Vulnerabilities in Linux packages |
+| Application dependencies | Vulnerabilities in libraries      |
+| Misconfigurations        | Security configuration issues     |
+| Secrets                  | Exposed credentials               |
+```
+Example vulnerability severity levels:
+
+```
+CRITICAL
+HIGH
+MEDIUM
+LOW
+UNKNOWN
+```
+
+---
+
+# Installing Trivy on Docker Host
+
+Trivy must be installed on the **Docker host machine**.
+
+Run the following commands:
+
+```bash
+# install required packages
+sudo apt-get install wget apt-transport-https gnupg lsb-release
+
+# download trivy repository public key
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+
+# add trivy repository to apt sources
+echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main \
+| sudo tee -a /etc/apt/sources.list.d/trivy.list
+
+# update package list
+sudo apt-get update
+
+# install trivy
+sudo apt-get install trivy
+```
+
+Explanation:
+
+```
+apt-get install wget apt-transport-https gnupg lsb-release
+```
+
+Installs required tools to download and verify packages.
+
+```
+apt-key add
+```
+
+Adds the repository's public key for secure package verification.
+
+```
+apt-get install trivy
+```
+
+Installs the Trivy vulnerability scanner.
+
+---
+
+# Verify Installation
+
+Check Trivy version:
+
+```bash
+# verify trivy installation
+trivy --version
+```
+
+Example output:
+
+```
+Version: 0.50.0
+```
+
+---
+
+# Scanning a Docker Image
+
+To scan an image, provide the **image name**.
+
+Example:
+
+```bash
+# scan nginx image for vulnerabilities
+trivy image nginx
+```
+
+Trivy will:
+
+1. download vulnerability database
+2. analyze image layers
+3. check packages against vulnerability database
+4. print results in the terminal
+
+---
+
+# Example Scan Output
+
+```
+nginx (debian 11)
+
+Total: 10 vulnerabilities
+
+CRITICAL: 2
+HIGH: 4
+MEDIUM: 3
+LOW: 1
+```
+
+Example vulnerability report:
+
+```
+Package: openssl
+Severity: HIGH
+Installed Version: 1.1.1
+Fixed Version: 1.1.1k
+```
+
+---
+
+# Scan Specific Image Version
+
+```bash
+# scan a specific image tag
+trivy image nginx:1.25
+```
+
+---
+
+# Scan Local Image
+
+Example:
+
+```bash
+# scan custom image
+trivy image myapp:latest
+```
+
+---
+
+# Ignore Low Severity Vulnerabilities
+
+```bash
+# show only high and critical vulnerabilities
+trivy image --severity HIGH,CRITICAL nginx
+```
+
+---
+
+# Generate JSON Report
+
+```bash
+# export scan results in json format
+trivy image -f json -o result.json nginx
+```
+
+This is useful for:
+
+* CI/CD pipelines
+* security reports
+* automation
+
+---
+
+# Integrating Trivy in CI/CD
+
+Trivy can be integrated into:
+
+* Jenkins pipelines
+* GitHub Actions
+* GitLab CI
+* DevSecOps pipelines
+
+Example workflow:
+
+```
+Build Docker Image
+        │
+        ▼
+Scan Image using Trivy
+        │
+        ▼
+If vulnerabilities found → Fail pipeline
+        │
+        ▼
+Push secure image to registry
+```
+
+---
+
+# Example DevSecOps Flow
+
+```
+Developer pushes code
+        │
+        ▼
+CI Pipeline builds Docker image
+        │
+        ▼
+Trivy scans image
+        │
+        ▼
+If vulnerabilities detected → block deployment
+        │
+        ▼
+Deploy secure image
+```
+
+---
+
+# Benefits of Using Trivy
+
+* fast vulnerability scanning
+* simple CLI tool
+* no complex configuration
+* integrates with CI/CD pipelines
+* supports multiple artifact types
+
+---
+
+# One-Line Summary
+
+```
+Trivy is a security scanner used to detect vulnerabilities in Docker images before deploying them to production.
+```
+
+---
