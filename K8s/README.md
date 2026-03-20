@@ -74,6 +74,74 @@ in the desired state automatically.
         └────────────────────────────────────┘
 ```
 
+```text
+send req
+create 5 containers
+        │
+        ▼
+   ┌──────────┐
+   │ kubectl  │
+   └──────────┘
+        │
+        │ receives the request
+        ▼
+   ┌────────────┐
+   │ apiServer  │◄────────────────────────────┐
+   └────────────┘                             │
+        │                                     │
+        │ containers are pending              │
+        ▼                                     │
+   ┌──────────────┐                           │
+   │    ETCD      │                           │
+   │ stores all   │                           │
+   │ information  │                           │
+   └──────────────┘                           │
+        ▲                                     │
+        │                                     │
+        │ updates status                      │
+        │                                     │
+        ▼                                     │
+   ┌──────────────┐                           │
+   │  Scheduler   │───────────────────────────┘
+   └──────────────┘
+        │
+        │ decide and inform apiServer
+        │ containers create on worker1
+        ▼
+   ┌────────────┐
+   │ apiServer  │
+   └────────────┘
+        │
+        │ create 5 containers
+        ▼
+   ┌────────────────────┐
+   │ Worker1            │
+   │ kubelet            │
+   └────────────────────┘
+        │
+        │ inform apiServer that
+        │ 5 containers are created
+        ▼
+   ┌──────────┐
+   │ Docker   │
+   └──────────┘
+        │
+        │ pull the image
+        ▼
+   ┌────────────┐
+   │ DockerHub  │
+   └────────────┘
+        │
+        │ pull the image
+        ▼
+   ┌──────────────────────────────┐
+   │        RUN THE IMAGE         │
+   │   ⬡   ⬡   ⬡   ⬡   ⬡         │
+   │   (5 containers running)     │
+   └──────────────────────────────┘
+```
+
+
 ---
 
 # 🧠 Component Explanation
@@ -409,10 +477,325 @@ User → API Server → ETCD → Scheduler → Worker → Pod
 
 ---
 
-If you want next:
+# ☸️ Kubernetes POD & Cluster Setup Notes (GCP + Core Concepts)
 
-* 🔥 YAML examples (Deployment + Service)
-* 🔥 Debugging pods (CrashLoopBackOff)
-* 🔥 Real interview Q&A
+---
 
-Just tell 👍
+# 📌 Creating Kubernetes Cluster on GCP (GKE)
+
+## What was done
+
+* Created a **ready-made Kubernetes cluster** using **GKE (Google Kubernetes Engine)**
+
+---
+
+## 💰 Free Tier Best Practices
+
+```text
+✔ Use ZONE-based cluster (cheaper)
+✔ Use only 1 worker node
+✔ Free for 90 days (trial)
+```
+
+---
+
+## 🌐 Steps (High Level)
+
+1. Go to GCP Console
+2. Navigate to **Kubernetes Engine → Clusters**
+3. Click **Create Cluster**
+4. Choose:
+
+   * Zone-based cluster
+   * 1 node
+5. Create cluster
+6. Connect using:
+
+```bash
+# connect via cloud shell
+gcloud container clusters get-credentials <cluster-name> --zone <zone>
+```
+
+---
+---------------------------------------------------------------------------
+# 📦 Kubernetes POD (Core Concept)
+
+## 📊 Diagram Representation
+
+```text
+┌────────────────────────────┐
+│           POD              │
+│                            │
+│      ⬡ container           │
+│                            │
+└────────────────────────────┘
+```
+
+---
+
+## 📌 What is a POD?
+
+A **Pod** is:
+
+```text
+Smallest deployable unit in Kubernetes
+```
+
+---
+
+## 🧠 Key Points
+
+* Pod contains **one or more containers**
+* Kubernetes **does NOT manage containers directly**
+* It manages **Pods**
+
+---
+
+## 🔄 Main Purpose (Very Important)
+
+```text
+Self-Healing
+```
+
+* If container fails → Pod restarts it
+* Ensures application is always running
+
+---
+
+## 🛡️ Why Pod?
+
+* Acts as **protective layer** around container
+* Handles:
+
+  * Restart
+  * Health check
+  * Lifecycle
+
+---
+
+## 🧾 Easy Understanding
+
+```text
+POD ≈ Container (in Kubernetes world)
+```
+
+---
+
+# 🧩 Multi-Container Pods
+
+## 📌 When to Use?
+
+Use when containers must **work together tightly**
+
+---
+
+## 🔥 Real Use Cases
+
+* Istio sidecar containers
+* Prometheus exporters
+* Logging agents
+* Monitoring tools
+
+---
+
+## 📊 Example
+
+```text
+POD
+ ├── nginx (main app)
+ ├── tomcat (support)
+ └── ubuntu (helper container)
+```
+
+---
+
+# 📄 Kubernetes YAML Structure
+
+Every Kubernetes YAML has **4 main sections**:
+
+```yaml
+apiVersion:   # version of API
+kind:         # object type (Pod, Deployment, etc.)
+metadata:     # name, labels
+spec:         # actual configuration
+```
+
+---
+
+# 🔍 YAML Fields Explanation
+
+## apiVersion
+
+* Defines API version
+* Example: `v1`
+
+---
+
+## kind
+
+* Type of object
+* Example:
+
+```yaml
+kind: Pod
+```
+
+---
+
+## metadata
+
+* Contains:
+
+  * name
+  * labels
+
+---
+
+## spec
+
+* Defines:
+
+  * containers
+  * images
+  * commands
+
+---
+
+# 🧪 Multi-Container Pod Example
+
+```yaml
+# create a pod with multiple containers
+apiVersion: v1
+kind: Pod
+
+metadata:
+  name: pod2
+  labels:
+    author: sonal
+    type: webserver
+    env: dev
+
+spec:
+  containers:
+    - name: c1
+      image: nginx
+
+    - name: c2
+      image: tomcat
+
+    - name: c3
+      image: ubuntu
+      # keep container running
+      command: ["bash", "-c", "sleep 6000"]
+```
+
+---
+
+# ⚙️ Commands (Step-by-Step)
+
+## Create Pod
+
+```bash
+# create pod from yaml
+kubectl create -f pod-definition.yml
+```
+
+---
+
+## Check Pods
+
+```bash
+# list pods
+kubectl get pods
+```
+
+---
+
+## View Logs
+
+```bash
+# logs of specific container
+kubectl logs pod2 -c c1
+```
+
+---
+
+## Get Containers in Pod
+
+```bash
+# list container names inside pod
+kubectl get pods pod2 -o jsonpath='{.spec.containers[*].name}'
+```
+
+---
+
+## Delete Pod
+
+```bash
+# delete pod
+kubectl delete pod pod2
+```
+
+---
+
+# 🛠️ Troubleshooting Commands
+
+```bash
+# check status
+kubectl get pods
+
+# detailed info
+kubectl describe pod <pod-name>
+
+# logs
+kubectl logs <pod-name> -c <container>
+```
+
+---
+
+# 🔁 Pod Lifecycle (Flow)
+
+```text
+kubectl apply
+      │
+      ▼
+API Server
+      │
+      ▼
+Scheduler
+      │
+      ▼
+Worker Node (kubelet)
+      │
+      ▼
+Pod Created
+      │
+      ▼
+Container Running
+      │
+      ▼
+If fails → Restart (Self-Healing)
+```
+
+---
+
+# 🧠 Key Takeaways
+
+✔ Pod is smallest unit
+✔ Pod manages container lifecycle
+✔ Supports multi-container architecture
+✔ Provides self-healing
+✔ Always work with Pods (not containers)
+
+---
+
+# 🧾 One-Line Summary
+
+```text
+A Pod is the smallest deployable unit in Kubernetes that manages and protects one or more containers.
+```
+
+---
+
+
+
