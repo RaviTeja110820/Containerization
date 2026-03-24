@@ -44,6 +44,12 @@ in the desired state automatically.
 
 # 🏗️ Kubernetes Architecture (Detailed)
 
+
+![Architecture](images/architecture.jpg)
+
+
+
+
 ```
                         USER
                          │
