@@ -1365,4 +1365,755 @@ Service is a Kubernetes resource that provides stable networking and load balanc
 
 ---
 
+# ☸️ Kubernetes Service – ClusterIP (Detailed Notes with Demo)
 
+---
+
+![ClusterIP](images/cluster-ip.jpg)
+
+
+
+# 📌 What is ClusterIP?
+
+```text
+ClusterIP is a Kubernetes Service type used for communication 
+between Pods inside the cluster.
+```
+
+---
+
+# 🧠 Simple Understanding
+
+```text
+Pod → Service (ClusterIP) → Pod
+```
+
+👉 Used only for **internal communication**
+
+---
+
+# 🎯 Use Case
+
+```text
+When one pod needs to talk to another pod inside the cluster
+```
+
+Example:
+
+* Frontend Pod → Backend Pod
+* App Pod → Database Pod
+
+---
+
+# ❗ Important Points
+
+* Default service type
+* Not accessible outside cluster
+* Provides:
+
+  * Stable IP
+  * DNS name
+* Uses **labels (selector)** to connect pods
+
+---
+
+# 🧪 DEMO – Pod to Pod Communication using ClusterIP
+
+---
+
+# Step 1️⃣ – Create Nginx Pod
+
+```yaml
+# nginx-pod.yml
+
+apiVersion: v1              # API version
+kind: Pod                  # creating a Pod
+
+metadata:
+  name: pod1               # pod name
+  labels:
+    app: webserver         # label used by service selector
+
+spec:
+  containers:
+    - name: c1             # container name
+      image: nginx         # nginx web server image
+```
+
+---
+
+# Step 2️⃣ – Create Test Pod (Client Pod)
+
+```yaml
+# test-pod.yml
+
+apiVersion: v1             # API version
+kind: Pod                 # creating a Pod
+
+metadata:
+  name: test-pod          # client pod name
+
+spec:
+  containers:
+    - name: c1            # container name
+      image: ubuntu       # ubuntu image
+
+      # keep container running
+      command: ["bash", "-c", "sleep 6000"]
+```
+
+---
+
+# Step 3️⃣ – Create ClusterIP Service
+
+```yaml
+# service.yml
+
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: mysvc             # service name (used as DNS)
+
+spec:
+  type: ClusterIP         # service type
+
+  selector:
+    app: webserver        # connects to pods with this label
+
+  ports:
+    - port: 80            # service port
+      targetPort: 80      # container port inside pod
+```
+
+---
+
+# Step 4️⃣ – Apply YAML Files
+
+```bash
+# create nginx pod
+kubectl create -f nginx-pod.yml
+
+# create test pod
+kubectl create -f test-pod.yml
+
+# create service
+kubectl create -f service.yml
+
+# check services
+kubectl get svc
+```
+
+---
+
+# Step 5️⃣ – Verify Service Connection
+
+```bash
+# check endpoints (linked pods)
+kubectl get endpoints
+```
+
+👉 This shows which pod is connected to service
+
+---
+
+# Step 6️⃣ – Access Service from Test Pod
+
+```bash
+# enter into test pod
+kubectl exec -it test-pod -- bash
+```
+
+---
+
+## Install curl inside pod
+
+```bash
+# update packages
+apt-get update
+
+# install curl
+apt-get install curl -y
+```
+
+---
+
+## Call Service using DNS name
+
+```bash
+# access nginx via service
+curl mysvc
+```
+
+---
+
+# 🔄 How It Works (Flow Diagram)
+
+```text
+test-pod (client)
+      │
+      ▼
+   mysvc (ClusterIP Service)
+      │
+      ▼
+   pod1 (nginx)
+```
+
+---
+
+# 🧠 Key Concept (VERY IMPORTANT)
+
+```text
+Service does NOT connect to pod directly using IP
+It uses LABEL SELECTOR
+```
+
+---
+
+# ⚠️ Common Mistakes
+
+* Labels mismatch ❌
+* Wrong port mapping ❌
+* Pod not running ❌
+
+---
+
+# 🧾 One-Line Summary
+
+```text
+ClusterIP allows internal communication between pods using a stable service name instead of dynamic pod IPs.
+```
+
+---
+
+# ☸️ Kubernetes Services – NodePort & ExternalName (Detailed Notes)
+
+---
+
+# 🌐 NodePort Service
+
+---
+
+![NodePort Service](images/node-port.jpg)
+
+
+# 📌 What is NodePort?
+
+```text id="j8wq2m"
+NodePort is a Service type that exposes a Pod to the outside world 
+using a port on each node of the cluster.
+```
+
+---
+
+# 🧠 Why NodePort?
+
+## 🚫 Problem
+
+```text id="b3s4xp"
+❌ Cannot access Pod IP outside cluster  
+❌ Cannot access ClusterIP outside cluster
+```
+
+---
+
+## ✅ Solution
+
+```text id="k9v8tn"
+Expose the service externally using NodePort
+```
+
+---
+
+# 🔑 Key Concepts
+
+* Opens a port on **every node**
+* Accessible using:
+
+```text id="4d4o1q"
+<NodeIP>:<NodePort>
+```
+
+---
+
+## 🔢 NodePort Range
+
+```text id="x7j3ys"
+30000 - 32767
+```
+
+---
+
+# 🔄 Flow Diagram
+
+```text id="l1yazg"
+Browser
+   │
+   ▼
+NodeIP:NodePort
+   │
+   ▼
+Service (NodePort)
+   │
+   ▼
+Pod (nginx)
+```
+
+---
+
+# 📄 NodePort YAML Example
+
+```yaml id="t3s8z1"
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: mysvc1              # service name
+
+spec:
+  type: NodePort            # expose service externally
+
+  selector:
+    app: webserver          # connects to pods with this label
+
+  ports:
+    - port: 80              # service port (internal)
+      targetPort: 80        # container port inside pod
+
+      # optional: if not given, Kubernetes assigns automatically
+      # nodePort: 30007
+```
+
+---
+
+# ⚙️ How to Access
+
+```text id="c0z5m6"
+http://<NodeIP>:<NodePort>
+```
+
+Example:
+
+```text id="q3p4rl"
+http://192.168.1.10:30007
+```
+
+---
+
+# ⚠️ Important Notes
+
+* NodePort is mainly used for:
+
+  * testing
+  * basic external access
+* Not recommended for production (use LoadBalancer / Ingress)
+
+---
+
+# 🌍 ExternalName Service
+
+---
+
+# 📌 What is ExternalName?
+
+```text id="y0n7zx"
+ExternalName is a Service that maps a Kubernetes service name 
+to an external DNS name.
+```
+
+---
+
+# 🧠 Simple Understanding
+
+```text id="1y4kq9"
+Internal name → External service
+```
+
+---
+
+# 🔑 Key Features
+
+* Does NOT create:
+
+  * ClusterIP ❌
+  * Proxy ❌
+* Creates:
+
+```text id="gq7y6b"
+CNAME (DNS alias)
+```
+
+---
+
+# 🎯 Use Cases
+
+* Access external database
+* Connect to external APIs
+* Use legacy systems
+
+---
+
+# 🧪 DEMO – Step-by-Step
+
+---
+
+## Step 1️⃣ – Create Nginx Pod + Service
+
+```yaml id="b1q0pe"
+# nginx-pod-service.yml
+
+apiVersion: v1
+kind: Pod
+
+metadata:
+  name: nginx
+  labels:
+    app: nginx
+
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+---
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: nginx-service
+
+spec:
+  selector:
+    app: nginx            # connect to nginx pod
+
+  ports:
+    - protocol: TCP
+      port: 80            # service port
+      targetPort: 80      # container port
+```
+
+---
+
+## 📍 Access Inside Cluster
+
+```text id="y8q3c1"
+nginx-service.default.svc.cluster.local:80
+```
+
+---
+
+## Step 2️⃣ – Create ExternalName Service
+
+```yaml id="d8v2op"
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: nginx-external     # alias name
+
+spec:
+  type: ExternalName       # special service type
+
+  externalName: nginx-service.default.svc.cluster.local
+  # maps to internal service DNS
+```
+
+---
+
+## 📍 DNS Mapping
+
+```text id="q9z3yx"
+nginx-external.default.svc.cluster.local 
+        ↓
+nginx-service.default.svc.cluster.local
+```
+
+---
+
+## Step 3️⃣ – Create Ubuntu Pod (Client)
+
+```yaml id="m2p8xq"
+# ubuntu-pod.yaml
+
+apiVersion: v1
+kind: Pod
+
+metadata:
+  name: ubuntu
+
+spec:
+  containers:
+    - name: ubuntu
+      image: ubuntu
+
+      # keep pod running
+      command: ["sleep", "3600"]
+
+  restartPolicy: Never
+```
+
+---
+
+## Step 4️⃣ – Apply YAML Files
+
+```bash id="r7z2lt"
+# create resources
+kubectl create -f nginx-pod-service.yml
+kubectl create -f ubuntu-pod.yaml
+kubectl create -f externalname.yml
+```
+
+---
+
+## Step 5️⃣ – Access Service from Ubuntu Pod
+
+```bash id="c4l1hv"
+# enter ubuntu pod
+kubectl exec -it ubuntu -- bash
+```
+
+---
+
+## Install curl
+
+```bash id="y2o5wd"
+# update packages
+apt update
+
+# install curl
+apt install -y curl
+```
+
+---
+
+## Call ExternalName Service
+
+```bash id="p7k4sm"
+# access nginx via alias
+curl http://nginx-external
+```
+
+---
+
+# 🔄 Flow Diagram (ExternalName)
+
+```text id="p9m6xn"
+Ubuntu Pod
+    │
+    ▼
+nginx-external (DNS alias)
+    │
+    ▼
+nginx-service
+    │
+    ▼
+nginx Pod
+```
+
+---
+
+# ⚖️ NodePort vs ExternalName
+```
+| Feature       | NodePort        | ExternalName             |
+| ------------- | --------------- | ------------------------ |
+| Purpose       | External access | DNS alias                |
+| Creates IP    | Yes             | No                       |
+| Creates Proxy | Yes             | No                       |
+| Use Case      | Browser access  | External service mapping |
+```
+---
+
+# 🧠 Key Takeaways
+
+✔ NodePort exposes app outside cluster
+✔ ExternalName creates DNS alias
+✔ ExternalName does NOT route traffic
+✔ NodePort opens port on all nodes
+
+---
+
+# 🧾 One-Line Summary
+
+```text id="6z4k1y"
+NodePort exposes services externally via node ports, while ExternalName provides DNS-based access to external services.
+```
+
+---
+
+
+
+# ☸️ Kubernetes Service – LoadBalancer (Detailed Notes)
+
+---
+
+![LoadBalancer](images/loadbalancer-service.jpg)
+
+
+
+# 📌 What is LoadBalancer Service?
+
+```text id="v3m1qa"
+LoadBalancer is a Service type that exposes your application 
+to the external world using a cloud provider load balancer.
+```
+
+---
+
+# 🧠 Simple Understanding
+
+```text id="p8x1zm"
+User → LoadBalancer → Service → Pods
+```
+
+---
+
+# 🎯 Why LoadBalancer?
+
+## 🚫 Problem
+
+```text id="n5y3rb"
+❌ Pod IP cannot be accessed externally  
+❌ ClusterIP is internal only  
+❌ NodePort is not ideal for production
+```
+
+---
+
+## ✅ Solution
+
+```text id="j1q9kt"
+Use LoadBalancer to expose application with a public IP
+```
+
+---
+
+# 🔑 Key Features
+
+* Provides **external/public IP**
+* Automatically creates **cloud load balancer**
+* Distributes traffic across multiple pods
+* Works with cloud providers:
+
+  * AWS (ELB)
+  * GCP (GCLB)
+  * Azure (ALB)
+
+---
+
+# 🔄 Flow Diagram
+
+```text id="0g3n5x"
+User (Browser)
+      │
+      ▼
+Cloud LoadBalancer (Public IP)
+      │
+      ▼
+Service (LoadBalancer)
+      │
+      ▼
+Pod1   Pod2   Pod3
+```
+
+---
+
+# 📄 LoadBalancer YAML Example
+
+```yaml id="c4y2mn"
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: mysvc              # service name
+
+spec:
+  type: LoadBalancer       # expose service externally using cloud LB
+
+  selector:
+    app: webserver         # connects to pods with this label
+
+  ports:
+    - port: 80             # service port (external access)
+      targetPort: 80       # container port inside pod
+```
+
+---
+
+# ⚙️ Create Service
+
+```bash id="q7p2zt"
+# create load balancer service
+kubectl create -f service-lb.yml
+```
+
+---
+
+# 🔍 Verify Service
+
+```bash id="q4s8xa"
+# check service details
+kubectl get svc
+```
+
+Example output:
+
+```text id="s9f1bn"
+NAME     TYPE           CLUSTER-IP     EXTERNAL-IP     PORT(S)
+mysvc    LoadBalancer   10.0.0.10      34.100.20.10    80:30007/TCP
+```
+
+---
+
+# 🌐 Access Application
+
+```text id="c7k2op"
+http://<EXTERNAL-IP>
+```
+
+Example:
+
+```text id="k8n3wl"
+http://34.100.20.10
+```
+
+---
+
+# ⚠️ Important Notes
+
+* Works only in **cloud environments**
+* On local (Minikube, Docker Desktop):
+
+  * External IP may show as **pending**
+* Behind the scenes:
+
+```text id="w5j6fa"
+LoadBalancer → NodePort → Pods
+```
+
+---
+
+# ⚖️ Comparison with Other Services
+```
+| Feature        | ClusterIP         | NodePort           | LoadBalancer         |
+| -------------- | ----------------- | ------------------ | -------------------- |
+| Access         | Internal          | External (Node IP) | External (Public IP) |
+| Use Case       | Pod communication | Testing            | Production           |
+| Load Balancing | Internal          | Basic              | Advanced             |
+```
+---
+
+# 🧠 Key Takeaways
+
+✔ Best for production external access
+✔ Provides public IP
+✔ Automatically creates cloud load balancer
+✔ Handles traffic distribution
+
+---
+
+# 🧾 One-Line Summary
+
+```text id="m9c2zs"
+LoadBalancer exposes Kubernetes services to the internet using a cloud-managed load balancer with a public IP.
+```
+
+---
