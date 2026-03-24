@@ -1698,6 +1698,17 @@ Example:
 http://192.168.1.10:30007
 ```
 
+## By default, GCP blocks NodePort traffic.
+
+✅ Fix Firewall
+
+Run this in Cloud Shell:
+```bash
+gcloud compute firewall-rules create allow-nodeport \
+  --allow tcp:30000-32767 \
+  --source-ranges=0.0.0.0/0 \
+  --description="Allow NodePort access"
+```
 ---
 
 # ⚠️ Important Notes
