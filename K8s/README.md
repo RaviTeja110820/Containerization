@@ -2128,3 +2128,460 @@ LoadBalancer exposes Kubernetes services to the internet using a cloud-managed l
 ```
 
 ---
+
+
+# Kubernetes Ingress with NGINX Ingress Controller — Complete Notes
+
+# What is Ingress in Kubernetes?
+
+An **Ingress** is a Kubernetes object used to expose HTTP/HTTPS applications from outside the cluster.
+
+Instead of exposing every application using:
+- NodePort
+- LoadBalancer
+
+Ingress provides:
+- Host-based routing
+- Path-based routing
+- Centralized traffic management
+
+Example:
+```
+| Domain | Target Service |
+|---|---|
+| website01.example.com | service1 |
+| website02.example.com | service2 |
+```
+Ingress works like a **reverse proxy**.
+
+---
+
+# Architecture Flow
+
+```text
+Browser/User
+      |
+      v
+NGINX Ingress Controller
+      |
+ -------------------------
+ |                       |
+ v                       v
+service1             service2
+ |                       |
+ v                       v
+pod1                  pod2
+```
+![Ingress Service](images/ingress-service.jpg)
+---
+
+# Step 1 — Install NGINX Ingress Controller
+
+## What is Ingress Controller?
+
+Ingress resource alone cannot route traffic.
+
+We need an actual controller that:
+- Reads Ingress rules
+- Configures reverse proxy
+- Routes traffic
+
+Here we use:
+- NGINX Ingress Controller
+
+---
+
+## Official Documentation
+
+https://github.com/kubernetes/ingress-nginx/blob/main/docs/deploy/index.md
+
+---
+
+## Install Command
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.2.1/deploy/static/provider/cloud/deploy.yaml
+```
+
+---
+
+## Verify Installation
+
+```bash
+kubectl get pods -n ingress-nginx
+```
+
+---
+
+# Step 2 — Create Backend Pods
+
+```bash
+kubectl run pod1 --image nginx
+kubectl run pod2 --image nginx
+```
+
+---
+
+## Verify Pods
+
+```bash
+kubectl get pods
+```
+
+---
+
+# Step 3 — Create Services
+
+## Create Service for pod1
+
+```bash
+kubectl expose pod pod1 --name service1 --port=80 --target-port=80
+```
+
+---
+
+## Create Service for pod2
+
+```bash
+kubectl expose pod pod2 --name service2 --port=80 --target-port=80
+```
+
+---
+
+# Step 4 — Verify Services
+
+```bash
+kubectl get svc
+```
+
+Example:
+
+```text
+NAME         TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)
+service1     ClusterIP   10.8.4.0       <none>        80/TCP
+service2     ClusterIP   10.8.2.113     <none>        80/TCP
+```
+
+---
+
+# Important Concepts
+
+## ClusterIP
+
+Default Kubernetes service type.
+
+Accessible:
+- Only inside cluster
+
+---
+
+# Step 5 — Create Frontend Test Pod
+
+```bash
+kubectl run frontend-pod --image ubuntu --command -- sleep 36000
+```
+
+---
+
+# Step 6 — Enter Frontend Pod
+
+```bash
+kubectl exec -it frontend-pod -- bash
+```
+
+---
+
+# Step 7 — Install Utilities
+
+```bash
+apt-get update
+apt-get install curl nano -y
+```
+
+---
+
+# Step 8 — Test Services Internally
+
+```bash
+curl service1
+curl service2
+```
+
+---
+
+# Step 9 — Create Ingress Resource
+
+Create file:
+
+```bash
+vim ingress.yml
+```
+
+---
+
+# Ingress YAML
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+
+metadata:
+  name: name-virtual-host-ingress
+
+spec:
+  ingressClassName: nginx
+
+  rules:
+
+  - host: website01.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+
+        backend:
+          service:
+            name: service1
+            port:
+              number: 80
+
+  - host: website02.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+
+        backend:
+          service:
+            name: service2
+            port:
+              number: 80
+```
+
+---
+
+# Step 10 — Create Ingress
+
+```bash
+kubectl apply -f ingress.yml
+```
+
+---
+
+# Step 11 — Verify Ingress
+
+```bash
+kubectl get ingress
+```
+
+---
+
+# Step 12 — Describe Ingress
+
+```bash
+kubectl describe ingress name-virtual-host-ingress
+```
+
+---
+
+# Step 13 — Check IngressClass
+
+```bash
+kubectl get ingressclass
+```
+
+Expected:
+
+```text
+NAME    CONTROLLER
+nginx   k8s.io/ingress-nginx
+```
+
+---
+
+# Step 14 — Check Ingress Controller Service
+
+```bash
+kubectl get svc -n ingress-nginx
+```
+
+---
+
+# Step 15 — Copy LoadBalancer External IP
+
+Example:
+
+```text
+34.135.243.240
+```
+
+---
+
+# Step 16 — Update Frontend Pod Hosts File
+
+```bash
+kubectl exec -it frontend-pod -- bash
+```
+
+Open hosts file:
+
+```bash
+nano /etc/hosts
+```
+
+Add entry:
+
+```text
+34.135.243.240 website01.example.com website02.example.com
+```
+
+---
+
+# Step 17 — Test Ingress
+
+```bash
+curl website01.example.com
+curl website02.example.com
+```
+
+---
+
+# Step 18 — Customize Website Content
+
+## Update pod1
+
+```bash
+kubectl exec -it pod1 -- bash
+cd /usr/share/nginx/html
+echo "this is website1" > index.html
+```
+
+---
+
+## Update pod2
+
+```bash
+kubectl exec -it pod2 -- bash
+cd /usr/share/nginx/html
+echo "this is website2" > index.html
+```
+
+---
+
+# Step 19 — Verify Again
+
+```bash
+curl website01.example.com
+```
+
+Output:
+
+```text
+this is website1
+```
+
+---
+
+```bash
+curl website02.example.com
+```
+
+Output:
+
+```text
+this is website2
+```
+
+---
+
+# Step 20 — Access from Windows Browser
+
+Open Notepad as Administrator.
+
+Open file:
+
+```text
+C:\Windows\System32\Drivers\etc\hosts
+```
+
+Add:
+
+```text
+34.135.243.240 website01.example.com website02.example.com
+```
+
+Save file.
+
+---
+
+# Final Flow
+
+```text
+Browser
+   |
+   v
+website01.example.com
+   |
+   v
+LoadBalancer External IP
+   |
+   v
+NGINX Ingress Controller
+   |
+   v
+Ingress Rules
+   |
+   v
+service1
+   |
+   v
+pod1
+```
+
+---
+
+# Important Kubernetes Concepts Covered
+```
+| Concept | Purpose |
+|---|---|
+| Pod | Runs container |
+| Service | Stable networking |
+| ClusterIP | Internal communication |
+| Ingress | HTTP/HTTPS routing |
+| Ingress Controller | Implements ingress rules |
+| LoadBalancer | Public external access |
+| DNS/Hosts file | Hostname mapping |
+```
+---
+
+# Useful Commands Summary
+
+## Pods
+
+```bash
+kubectl get pods
+```
+
+## Services
+
+```bash
+kubectl get svc
+```
+
+## Ingress
+
+```bash
+kubectl get ingress
+```
+
+## Describe Ingress
+
+```bash
+kubectl describe ingress name-virtual-host-ingress
+```
+
+## Ingress Controller Namespace
+
+```bash
+kubectl get pods -n ingress-nginx
+```
