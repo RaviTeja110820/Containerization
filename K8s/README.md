@@ -2322,38 +2322,76 @@ vim ingress.yml
 # Ingress YAML
 
 ```yaml
+# API version for Ingress resource
 apiVersion: networking.k8s.io/v1
+
+# Kubernetes resource type
 kind: Ingress
 
 metadata:
+
+  # Name of the Ingress resource
   name: name-virtual-host-ingress
 
 spec:
+
+  # Specifies which Ingress controller should handle this Ingress
   ingressClassName: nginx
 
+  # Rules define routing behavior
   rules:
 
+  # First virtual host configuration
   - host: website01.example.com
+
+    # HTTP routing rules
     http:
+
+      # List of URL paths
       paths:
+
+      # Route all traffic starting with "/"
       - path: /
+
+        # Prefix means match all URLs beginning with "/"
         pathType: Prefix
 
+        # Backend service configuration
         backend:
+
           service:
+
+            # Service name to forward traffic
             name: service1
+
+            # Service port number
             port:
               number: 80
 
+  # Second virtual host configuration
   - host: website02.example.com
+
+    # HTTP routing rules
     http:
+
+      # List of URL paths
       paths:
+
+      # Route all traffic starting with "/"
       - path: /
+
+        # Prefix means match all URLs beginning with "/"
         pathType: Prefix
 
+        # Backend service configuration
         backend:
+
           service:
+
+            # Service name to forward traffic
             name: service2
+
+            # Service port number
             port:
               number: 80
 ```
@@ -2585,3 +2623,637 @@ kubectl describe ingress name-virtual-host-ingress
 ```bash
 kubectl get pods -n ingress-nginx
 ```
+
+
+# Kubernetes ReplicaSet and Deployment — Complete Notes
+
+## What is a ReplicaSet?
+
+A ReplicaSet ensures that a specified number of pod replicas are always running.
+
+### Example
+
+If you want 3 nginx pods:
+- ReplicaSet continuously monitors pods
+- If one pod crashes, ReplicaSet automatically creates another pod
+
+## Why ReplicaSet is Important?
+
+### Without ReplicaSet
+- Pods may fail permanently
+- Manual recreation needed
+
+### With ReplicaSet
+- High availability
+- Self-healing
+- Automatic pod replacement
+
+## ReplicaSet Architecture
+
+```text
+ReplicaSet
+     |
+ ---------------------
+ |         |         |
+Pod1      Pod2      Pod3
+```
+
+If Pod2 crashes:
+
+```text
+ReplicaSet
+     |
+ ---------------------
+ |         |         |
+Pod1      X        Pod3
+              |
+          New Pod2 Created
+```
+
+---
+
+# ReplicaSet YAML File
+
+Create file:
+
+```bash
+vim replicaset.yml
+```
+
+## ReplicaSet YAML with Comments
+
+```yaml
+# Resource type
+kind: ReplicaSet
+
+# API version for ReplicaSet
+apiVersion: apps/v1
+
+metadata:
+  # Name of the ReplicaSet
+  name: myrs
+
+spec:
+
+  # Desired number of pod replicas
+  replicas: 3
+
+  # Selector identifies which pods belong to this ReplicaSet
+  selector:
+
+    # Match pods having this label
+    matchLabels:
+      app: webserver
+
+  # Template used to create new pods
+  template:
+
+    metadata:
+
+      # Labels assigned to created pods
+      labels:
+        app: webserver
+
+    spec:
+
+      containers:
+
+        # Container name
+        - name: c1
+
+          # Container image
+          image: nginx
+```
+
+# Important Fields Explanation
+
+## replicas
+
+```yaml
+replicas: 3
+```
+
+Means:
+- Maintain exactly 3 pods
+
+If:
+- One pod dies → new pod created
+- Extra pod created manually → ReplicaSet removes extra pod
+
+## selector
+
+```yaml
+selector:
+  matchLabels:
+    app: webserver
+```
+
+ReplicaSet identifies pods using labels.
+
+Only pods matching:
+
+```yaml
+app: webserver
+```
+
+are managed.
+
+## template
+
+Defines:
+- How new pods should be created
+
+Contains:
+- Labels
+- Containers
+- Images
+- Ports
+- Environment variables
+
+---
+
+# Create ReplicaSet
+
+```bash
+kubectl create -f replicaset.yml
+```
+
+# Verify Resources
+
+```bash
+kubectl get all
+```
+
+# Get Only Webserver Pods
+
+```bash
+kubectl get pods -l app=webserver
+```
+
+## What is -l?
+
+`-l` means:
+- Label selector
+
+Example:
+
+```bash
+-l app=webserver
+```
+
+Shows only pods with:
+```yaml
+app: webserver
+```
+
+---
+
+# Scaling ReplicaSet
+
+## Scale Up
+
+```bash
+kubectl scale replicaset myrs --replicas=5
+```
+
+Now ReplicaSet creates:
+- 5 pods
+
+## Scale Down
+
+```bash
+kubectl scale replicaset myrs --replicas=2
+```
+
+ReplicaSet removes extra pods.
+
+---
+
+# Self-Healing Demo
+
+Delete one pod:
+
+```bash
+kubectl delete pod <pod-name>
+```
+
+Immediately:
+- ReplicaSet creates another pod automatically
+
+This is called:
+- Self-healing
+
+---
+
+# Kubernetes Explain Command
+
+## Explain Pod Fields
+
+```bash
+kubectl explain Pod
+```
+
+Shows:
+- Pod structure
+- YAML fields
+- Descriptions
+
+## Explain ReplicaSet Fields
+
+```bash
+kubectl explain ReplicaSet
+```
+
+## Explain Nested Fields
+
+```bash
+kubectl explain deployment.spec
+```
+
+OR
+
+```bash
+kubectl explain deployment.spec.template
+```
+
+Very useful for learning YAML.
+
+---
+
+# What is a Deployment?
+
+Deployment is a higher-level Kubernetes object.
+
+Deployment manages:
+- ReplicaSets
+- Rolling updates
+- Rollbacks
+- Application versioning
+
+---
+
+# Deployment Architecture
+
+```text
+Deployment
+     |
+ReplicaSet
+     |
+Pods
+```
+
+# Why Use Deployment Instead of ReplicaSet?
+
+ReplicaSet only:
+- Maintains pod count
+
+Deployment provides:
+- Rolling updates
+- Rollbacks
+- Version control
+- Zero downtime deployment
+
+---
+
+# Rolling Update Deployment
+
+A rolling update updates pods gradually.
+
+Example:
+- Old version removed one by one
+- New version added one by one
+
+No downtime.
+
+---
+
+# Deployment YAML File
+
+Create file:
+
+```bash
+vim deployment.yml
+```
+
+## Deployment YAML with Comments
+
+```yaml
+# Resource type
+kind: Deployment
+
+# API version
+apiVersion: apps/v1
+
+metadata:
+
+  # Deployment name
+  name: kubeserve
+
+spec:
+
+  # Desired number of pods
+  replicas: 3
+
+  # Wait time before marking pod as ready
+  minReadySeconds: 10
+
+  # Deployment strategy
+  strategy:
+
+    # Rolling update strategy
+    type: RollingUpdate
+
+    rollingUpdate:
+
+      # Maximum unavailable pods during update
+      maxUnavailable: 1
+
+      # Extra temporary pods allowed during update
+      maxSurge: 1
+
+  # Select pods using labels
+  selector:
+
+    matchLabels:
+      app: kubeserve
+
+  # Pod template
+  template:
+
+    metadata:
+
+      # Pod labels
+      labels:
+        app: kubeserve
+
+    spec:
+
+      containers:
+
+        # Container name
+        - name: app
+
+          # Docker image
+          image: leaddevops/kubeserve:v1
+```
+
+# Important Deployment Concepts
+
+## minReadySeconds
+
+```yaml
+minReadySeconds: 10
+```
+
+Kubernetes waits:
+- 10 seconds before considering pod healthy
+
+Then only next pod update happens.
+
+## maxUnavailable
+
+```yaml
+maxUnavailable: 1
+```
+
+Maximum pods allowed unavailable during update.
+
+Example:
+- Total pods = 3
+- At most 1 pod can go down
+
+## maxSurge
+
+```yaml
+maxSurge: 1
+```
+
+Allows:
+- 1 extra pod temporarily during update
+
+Example:
+- Desired pods = 3
+- During update = 4 pods temporarily
+
+---
+
+# Rolling Update Process
+
+Example:
+
+```text
+Current:
+v1 v1 v1
+
+Update to v2:
+v2 v1 v1
+v2 v2 v1
+v2 v2 v2
+```
+
+Gradual replacement.
+
+---
+
+# Create Deployment
+
+```bash
+kubectl create -f deployment.yml
+```
+
+# Verify Deployment
+
+```bash
+kubectl get deployment
+```
+
+# Get All Resources
+
+```bash
+kubectl get all
+```
+
+---
+
+# Scale Deployment
+
+## Scale Up
+
+```bash
+kubectl scale deployment kubeserve --replicas=5
+```
+
+## Scale Down
+
+```bash
+kubectl scale deployment kubeserve --replicas=2
+```
+
+---
+
+# Update Application Image
+
+## Upgrade to Version 2
+
+```bash
+kubectl set image deployment kubeserve app=leaddevops/kubeserve:v2
+```
+
+## What Happens Internally?
+
+Deployment:
+- Creates new ReplicaSet
+- Gradually creates v2 pods
+- Removes old v1 pods
+
+---
+
+# Check Rollout Status
+
+```bash
+kubectl rollout status deployment kubeserve
+```
+
+Shows:
+- Update progress
+- Success/failure
+
+---
+
+# Upgrade to Version 3
+
+```bash
+kubectl set image deployment kubeserve app=leaddevops/kubeserve:v3
+```
+
+# Rollback Deployment
+
+Suppose:
+- v3 is faulty
+
+Rollback to previous version:
+
+```bash
+kubectl rollout undo deployment kubeserve
+```
+
+---
+
+# View Rollout History
+
+```bash
+kubectl rollout history deployment kubeserve
+```
+
+# Check ReplicaSets Created by Deployment
+
+```bash
+kubectl get rs
+```
+
+Each update creates:
+- New ReplicaSet
+
+---
+
+# Difference Between ReplicaSet and Deployment
+```
+| Feature | ReplicaSet | Deployment |
+|---|---|---|
+| Maintains pod count | Yes | Yes |
+| Self healing | Yes | Yes |
+| Scaling | Yes | Yes |
+| Rolling updates | No | Yes |
+| Rollbacks | No | Yes |
+| Version control | No | Yes |
+| Production usage | Rare | Common |
+```
+---
+
+# Real-World Example
+
+Suppose:
+- Your app version v1 is running
+- You release v2
+
+Deployment:
+- Updates pods gradually
+- Avoids downtime
+- Allows rollback if issue occurs
+
+This is how production applications are updated.
+
+---
+
+# Useful Commands Summary
+
+## ReplicaSet Commands
+
+### Create ReplicaSet
+
+```bash
+kubectl create -f replicaset.yml
+```
+
+### Get ReplicaSets
+
+```bash
+kubectl get rs
+```
+
+### Scale ReplicaSet
+
+```bash
+kubectl scale replicaset myrs --replicas=5
+```
+
+---
+
+## Deployment Commands
+
+### Create Deployment
+
+```bash
+kubectl create -f deployment.yml
+```
+
+### Get Deployments
+
+```bash
+kubectl get deployment
+```
+
+### Scale Deployment
+
+```bash
+kubectl scale deployment kubeserve --replicas=5
+```
+
+### Update Image
+
+```bash
+kubectl set image deployment kubeserve app=leaddevops/kubeserve:v2
+```
+
+### Check Rollout
+
+```bash
+kubectl rollout status deployment kubeserve
+```
+
+### Rollback
+
+```bash
+kubectl rollout undo deployment kubeserve
+```
+
+---
+
+# Best Practices
+
+- Use Deployment instead of direct ReplicaSet
+- Always use labels properly
+- Use rolling updates in production
+- Monitor rollout status
+- Use rollback during failures
+- Store YAML files in Git repositories
