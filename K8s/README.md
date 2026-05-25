@@ -3257,3 +3257,590 @@ kubectl rollout undo deployment kubeserve
 - Monitor rollout status
 - Use rollback during failures
 - Store YAML files in Git repositories
+
+# Kubernetes Horizontal Pod Autoscaler (HPA) — Complete Notes
+
+## What is Horizontal Pod Autoscaler (HPA)?
+
+Horizontal Pod Autoscaler (HPA) automatically scales the number of pods in a deployment based on CPU or memory usage.
+
+It helps Kubernetes applications handle:
+- High traffic
+- Low traffic
+- Automatic scaling
+
+---
+
+# Main Topics Covered
+
+- Pod Resources (CPU and Memory)
+- Resource Requests and Limits
+- Metrics Server
+- Horizontal Scaling vs Vertical Scaling
+- HPA Formula
+- HPA Configuration
+- Practical Demonstration
+- Load Generator Testing
+- Automatic Scaling Up and Down
+
+---
+
+# Pod Resources (CPU and Memory)
+
+Containers inside pods consume:
+- CPU
+- Memory
+
+Kubernetes allows us to control resource usage using:
+- Requests
+- Limits
+
+---
+
+# CPU in Kubernetes
+
+CPU is measured in:
+- CPU cores
+- Milli CPU cores (m)
+
+Examples:
+```
+| Value | Meaning |
+|---|---|
+| 1000m | 1 CPU core |
+| 500m | 0.5 CPU |
+| 100m | 0.1 CPU |
+| 10m | 0.01 CPU |
+```
+Example:
+
+```yaml
+resources:
+  limits:
+    cpu: 10m
+```
+
+This means:
+- Container can use maximum 10 milli CPU
+
+---
+
+# Memory in Kubernetes
+
+Memory is measured in:
+- Mi (Mebibytes)
+- Gi (Gibibytes)
+
+Examples:
+```
+| Value | Meaning |
+|---|---|
+| 128Mi | 128 MB |
+| 1Gi | 1 GB |
+``
+---
+
+# Resource Requests and Limits
+
+## Requests
+
+Requests mean:
+- Minimum guaranteed resources
+
+Example:
+
+```yaml
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+```
+
+---
+
+## Limits
+
+Limits mean:
+- Maximum resources container can consume
+
+Example:
+
+```yaml
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+```
+
+---
+
+# Why Resource Limits Are Important?
+
+Without limits:
+- One pod may consume all CPU
+- Other pods may become slow
+- Node resources may get exhausted
+
+This is called:
+- Resource starvation
+
+---
+
+# Horizontal Scaling vs Vertical Scaling
+
+## Horizontal Scaling
+
+Horizontal scaling means:
+- Creating more pods
+
+Example:
+
+```text
+1 Pod → 5 Pods
+```
+
+---
+
+## Vertical Scaling
+
+Vertical scaling means:
+- Increasing resources of existing pods
+
+Example:
+
+```text
+CPU: 100m → 500m
+Memory: 128Mi → 512Mi
+```
+
+---
+
+# Metrics Server
+
+Metrics Server provides:
+- CPU metrics
+- Memory metrics
+
+for:
+- Pods
+- Nodes
+
+HPA uses Metrics Server to monitor CPU usage.
+
+---
+
+# Install Metrics Server
+
+## Install Metrics Server
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+
+## Download Patch File
+
+```bash
+wget -c https://gist.githubusercontent.com/initcron/1a2bd25353e1faa22a0ad41ad1c01b62/raw/008e23f9fbf4d7e2cf79df1dd008de2f1db62a10/k8s-metrics-server.patch.yaml
+```
+
+## Apply Patch
+
+```bash
+kubectl patch deploy metrics-server -p "$(cat k8s-metrics-server.patch.yaml)" -n kube-system
+```
+
+---
+
+# Verify Metrics Server
+
+```bash
+kubectl get pods -n kube-system
+```
+
+---
+
+# Create HPA YAML File
+
+```bash
+cd mykubefiles
+vim hpa.yml
+```
+
+---
+
+# HPA YAML with Comments
+
+```yaml
+# Deployment API version
+apiVersion: apps/v1
+
+# Kubernetes object type
+kind: Deployment
+
+metadata:
+
+  # Deployment name
+  name: nginx
+
+  labels:
+
+    # Label assigned to deployment
+    app: nginx
+
+spec:
+
+  # Initial pod count
+  replicas: 1
+
+  # Select matching pods
+  selector:
+
+    # Match labels
+    matchLabels:
+      app: nginx
+
+  # Pod template
+  template:
+
+    metadata:
+
+      # Pod name
+      name: nginxpod
+
+      labels:
+
+        # Pod label
+        app: nginx
+
+    spec:
+
+      containers:
+
+        # Container name
+        - name: nginx
+
+          # Docker image
+          image: nginx:latest
+
+          # Resource configuration
+          resources:
+
+            limits:
+
+              # Maximum CPU usage allowed
+              cpu: 10m
+
+---
+
+# Service API version
+apiVersion: v1
+
+# Kubernetes object type
+kind: Service
+
+metadata:
+
+  # Service name
+  name: nginx-svc
+
+spec:
+
+  # Internal cluster service
+  type: ClusterIP
+
+  # Connect service to matching pods
+  selector:
+    app: nginx
+
+  ports:
+
+   # Port configuration
+   - protocol: TCP
+
+     # Service port
+     port: 80
+
+     # Container port
+     targetPort: 80
+
+---
+
+# HPA API version
+apiVersion: autoscaling/v1
+
+# Kubernetes object type
+kind: HorizontalPodAutoscaler
+
+metadata:
+
+  # HPA name
+  name: nginx-hpa
+
+spec:
+
+  # Deployment to monitor
+  scaleTargetRef:
+
+    # API version
+    apiVersion: apps/v1
+
+    # Resource type
+    kind: Deployment
+
+    # Deployment name
+    name: nginx
+
+  # Minimum pods allowed
+  minReplicas: 1
+
+  # Maximum pods allowed
+  maxReplicas: 10
+
+  # Target average CPU utilization percentage
+  targetCPUUtilizationPercentage: 5
+```
+
+---
+
+# Explanation for HPA
+
+Deployment can:
+- Scale pods manually
+
+But Deployment alone cannot decide:
+- When to scale automatically
+
+Deployment needs CPU usage information.
+
+Metrics Server:
+- Collects CPU and memory metrics
+
+HPA:
+- Reads metrics from Metrics Server
+- Decides whether to scale pods
+
+---
+
+# HPA Formula
+
+Desired Count = Current Replicas × (Current CPU Utilization / Target CPU Utilization)
+
+---
+
+# Example Calculation
+
+Suppose:
+- Current replicas = 4
+- Target CPU utilization = 50%
+- Current CPU utilization = 60%
+
+Formula:
+
+Desired Count = 4 × (60 / 50)
+
+Desired Count = 4.8
+
+Rounded value:
+- 5 Pods
+
+HPA tells deployment:
+- Scale replicas to 5
+
+---
+
+# CPU Utilization Example
+
+Suppose:
+- CPU limit = 500m
+- Current usage = 300m
+
+CPU utilization percentage:
+
+(300 / 500) × 100 = 60%
+
+---
+
+# Create Resources
+
+## Delete Existing Resources
+
+```bash
+kubectl delete all --all
+```
+
+## Create HPA Resources
+
+```bash
+kubectl create -f hpa.yml
+```
+
+## Verify Resources
+
+```bash
+kubectl get all
+```
+
+---
+
+# Launch Load Generator Pod
+
+Open another terminal and run:
+
+```bash
+kubectl run -i --tty load-generator --rm --image=busybox --restart=Never -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://Service-Internal-IP:80; done"
+```
+
+---
+
+# What Load Generator Does
+
+This command:
+- Continuously sends traffic
+- Increases CPU usage
+- Triggers autoscaling
+
+---
+
+# Monitor Pods
+
+## Check Pods
+
+```bash
+kubectl get pods
+```
+
+## Check CPU Usage
+
+```bash
+kubectl top pods
+```
+
+---
+
+# Observe Scaling
+
+## Scaling Up
+
+When CPU usage increases:
+- HPA creates more pods
+
+Example:
+
+```text
+1 Pod → 3 Pods → 5 Pods
+```
+
+---
+
+## Scaling Down
+
+When traffic decreases:
+- CPU usage decreases
+- HPA removes extra pods
+
+Example:
+
+```text
+5 Pods → 3 Pods → 1 Pod
+```
+
+---
+
+# Important HPA Parameters
+```
+| Parameter | Meaning |
+|---|---|
+| minReplicas | Minimum pods |
+| maxReplicas | Maximum pods |
+| targetCPUUtilizationPercentage | Target CPU percentage |
+```
+---
+
+# HPA Workflow
+
+```text
+User Traffic Increases
+          ↓
+CPU Usage Increases
+          ↓
+Metrics Server Collects Metrics
+          ↓
+HPA Reads Metrics
+          ↓
+HPA Calculates Desired Pods
+          ↓
+Deployment Scales Pods
+```
+
+---
+
+# Useful Commands
+
+## View HPA
+
+```bash
+kubectl get hpa
+```
+
+## Describe HPA
+
+```bash
+kubectl describe hpa nginx-hpa
+```
+
+## View Pod Metrics
+
+```bash
+kubectl top pods
+```
+
+## View Node Metrics
+
+```bash
+kubectl top nodes
+```
+
+---
+
+# Real-World Example
+
+Suppose:
+- Website traffic suddenly increases
+
+Without HPA:
+- Pods become overloaded
+- Website becomes slow
+
+With HPA:
+- Kubernetes automatically creates more pods
+- Traffic gets distributed
+- Website remains stable
+
+---
+
+# Best Practices
+
+- Always configure resource limits
+- Install Metrics Server correctly
+- Use HPA in production
+- Set reasonable minReplicas and maxReplicas
+- Monitor scaling behavior regularly
+- Test autoscaling using load generators
+
+---
+
+# Summary
+
+HPA automatically:
+- Scales up during high traffic
+- Scales down during low traffic
+
+Main components:
+- Deployment
+- Metrics Server
+- HPA
+
+Benefits:
+- Better performance
+- High availability
+- Efficient resource usage
