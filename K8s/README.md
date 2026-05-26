@@ -3844,3 +3844,920 @@ Benefits:
 - Better performance
 - High availability
 - Efficient resource usage
+
+
+
+
+# Vertical Pod Autoscaling (VPA) in Kubernetes
+
+## What is VPA?
+
+Vertical Pod Autoscaling (VPA) automatically adjusts the CPU and memory resource requests/limits for containers running inside pods.
+
+Instead of increasing the number of pods like HPA, VPA increases or decreases the resources assigned to existing pods.
+
+---
+
+# How VPA Works
+
+VPA works in 3 major steps:
+
+## 1. Monitor Resource Usage
+
+VPA continuously monitors:
+- CPU usage
+- Memory usage
+
+of running pods.
+
+---
+
+## 2. Recommend Resources
+
+Based on usage statistics, VPA calculates:
+- Recommended CPU
+- Recommended Memory
+
+for the container.
+
+---
+
+## 3. Apply Changes
+
+VPA updates pod resource requests automatically.
+
+Usually, pods are restarted so new resource values can take effect.
+
+---
+
+# Advantages of VPA
+
+## Resource Optimization
+
+Prevents:
+- Over-provisioning
+- Under-provisioning
+
+---
+
+## Simplified Resource Management
+
+No need to manually adjust CPU/memory requests repeatedly.
+
+---
+
+## Better Performance
+
+Applications get resources dynamically according to real usage.
+
+---
+
+# Step 1: Install VPA
+
+## Clone Kubernetes Autoscaler Repository
+
+```bash
+git clone https://github.com/kubernetes/autoscaler.git
+```
+
+---
+
+## Navigate to Autoscaler Directory
+
+```bash
+cd autoscaler
+```
+
+---
+
+## Install VPA Components
+
+```bash
+# Install VPA components
+./vertical-pod-autoscaler/hack/vpa-up.sh
+
+# Generate certificates for admission controller
+./vertical-pod-autoscaler/pkg/admission-controller/gencerts.sh
+```
+
+These commands install:
+- VPA controllers
+- CRDs
+- Admission controllers
+- Recommenders
+
+---
+
+# Verify Installation
+
+```bash
+kubectl get pods -n kube-system | grep vpa
+```
+
+Example:
+
+```bash
+vpa-admission-controller
+vpa-recommender
+vpa-updater
+```
+
+---
+
+# Step 2: Create Deployment
+
+Create file:
+
+```bash
+vim vpa-deployment.yaml
+```
+
+---
+
+# Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: high-cpu-utilization-deployment
+
+spec:
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: cpu-utilization-app
+
+  template:
+    metadata:
+      labels:
+        app: cpu-utilization-app
+
+    spec:
+      containers:
+        - name: cpu-utilization-container
+
+          # Ubuntu image
+          image: ubuntu
+
+          # Install stress-ng and generate CPU load continuously
+          command:
+            [
+              "/bin/sh",
+              "-c",
+              "apt-get update && apt-get install -y stress-ng && while true; do stress-ng --cpu 1; done"
+            ]
+
+          resources:
+            requests:
+              # Minimum requested CPU
+              cpu: "0.05"
+
+            limits:
+              # Maximum CPU allowed
+              cpu: "0.05"
+```
+
+---
+
+# Apply Deployment
+
+```bash
+kubectl apply -f vpa-deployment.yaml
+```
+
+---
+
+# Step 3: Create VPA Object
+
+Create file:
+
+```bash
+vim vpa.yaml
+```
+
+---
+
+# VPA YAML
+
+```yaml
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+
+metadata:
+  name: stress-vpa
+
+spec:
+  targetRef:
+    # Target deployment managed by VPA
+    apiVersion: "apps/v1"
+    kind: Deployment
+    name: high-cpu-utilization-deployment
+
+  updatePolicy:
+    # Automatically update pod resources
+    updateMode: Auto
+
+  resourcePolicy:
+    containerPolicies:
+      - containerName: "*"
+
+        minAllowed:
+          # Minimum CPU allowed
+          cpu: 100m
+
+          # Minimum memory allowed
+          memory: 50Mi
+
+        maxAllowed:
+          # Maximum CPU allowed
+          cpu: 200m
+
+          # Maximum memory allowed
+          memory: 500Mi
+
+        controlledResources:
+          # Resources controlled by VPA
+          - cpu
+          - memory
+```
+
+---
+
+# Apply VPA
+
+```bash
+kubectl apply -f vpa.yaml
+```
+
+---
+
+# Monitor Pods
+
+## Check CPU Usage
+
+```bash
+kubectl top po
+```
+
+Example:
+
+```bash
+NAME                                               CPU(cores)   MEMORY(bytes)
+high-cpu-utilization-deployment-78cc948dfb-fqbq9   50m          13Mi
+high-cpu-utilization-deployment-78cc948dfb-qtbt8   50m          9Mi
+```
+
+---
+
+# Check CPU Requests
+
+```bash
+kubectl get po -o jsonpath='{.items[*].spec.containers[*].resources.requests.cpu}'
+```
+
+Output:
+
+```bash
+50m 50m
+```
+
+Initially both pods request only `50m`.
+
+---
+
+# Check VPA Status
+
+```bash
+kubectl get vpa
+```
+
+Example:
+
+```bash
+NAME        MODE   CPU    MEM
+stress-vpa  Auto   100m   262144k
+```
+
+---
+
+# Updated CPU Requests
+
+```bash
+kubectl get po -o jsonpath='{.items[*].spec.containers[*].resources.requests.cpu}'
+```
+
+Output:
+
+```bash
+100m 100m
+```
+
+VPA increased CPU requests from:
+- 50m → 100m
+
+because of:
+
+```yaml
+minAllowed:
+  cpu: 100m
+```
+
+---
+
+# Why CPU Became 126m Instead of 200m?
+
+Because VPA:
+- Uses actual usage data
+- Avoids over-provisioning
+- Gradually increases resources
+
+Even though maximum allowed is:
+
+```yaml
+maxAllowed:
+  cpu: 200m
+```
+
+VPA only assigns what is necessary.
+
+---
+
+# Exclude a Specific Container from VPA
+
+```yaml
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+
+spec:
+  resourcePolicy:
+    containerPolicies:
+      - containerName: my-container
+
+        # Disable VPA for this container
+        mode: "Off"
+```
+
+---
+
+# HPA vs VPA
+```
+| Feature | HPA | VPA |
+|---|---|---|
+| Scaling Type | Horizontal | Vertical |
+| Method | Adds more pods | Increases pod resources |
+| Best For | Stateless apps | Stateful apps |
+| Scaling | Pod count | CPU/Memory |
+```
+---
+
+# When to Use HPA
+
+Use HPA when:
+- Application is stateless
+- Traffic varies heavily
+- Easy to add more pods
+
+Examples:
+- Web applications
+- API servers
+
+---
+
+# When to Use VPA
+
+Use VPA when:
+- Application is stateful
+- Difficult to scale horizontally
+- Resource usage changes over time
+
+Examples:
+- Databases
+- Monitoring systems
+- Stateful services
+
+
+# Resource Quotas in Kubernetes
+
+## What is a ResourceQuota?
+
+A `ResourceQuota` in Kubernetes is a namespace-level object that limits how many resources a namespace can consume.
+
+It helps control:
+
+- CPU usage
+- Memory usage
+- Number of pods
+- PVCs
+- Services
+- Other Kubernetes objects
+
+Resource Quotas are mainly used in multi-team or multi-tenant Kubernetes clusters.
+
+---
+
+# Why Use Resource Quotas?
+
+Without quotas:
+
+- A badly configured application may consume all cluster resources.
+- One namespace may create too many pods.
+- Cluster performance may become unstable.
+
+With quotas:
+
+- Resource usage is controlled.
+- Teams get fair resource allocation.
+- Cluster stability improves.
+
+---
+
+# Main Purpose of ResourceQuota
+
+ResourceQuota helps to:
+
+- Prevent resource exhaustion
+- Enforce fair usage
+- Improve cluster management
+- Control namespace resource consumption
+
+---
+
+# Demo 1: ResourceQuota Example
+
+Suppose we want a namespace called `dev-quota` with:
+
+- Maximum 2 CPUs
+- Maximum 4Gi memory
+- Maximum 10 pods
+- CPU and memory request/limit enforcement
+
+---
+
+# Create ResourceQuota YAML
+
+```bash
+# Create ResourceQuota YAML file
+vim resourcequota-demo.yml
+```
+
+---
+
+# ResourceQuota YAML
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+
+metadata:
+  # Name of the ResourceQuota object
+  name: dev-quota
+
+  # Namespace where quota is applied
+  namespace: dev-quota
+
+spec:
+  hard:
+
+    # Total CPU requests allowed in namespace
+    requests.cpu: "2"
+
+    # Total memory requests allowed in namespace
+    requests.memory: "2Gi"
+
+    # Maximum total CPU limits allowed
+    limits.cpu: "2"
+
+    # Maximum total memory limits allowed
+    limits.memory: "4Gi"
+
+    # Maximum number of pods allowed
+    pods: "10"
+```
+
+---
+
+# Apply ResourceQuota
+
+```bash
+# Apply ResourceQuota configuration
+kubectl apply -f resource-quota.yaml
+```
+
+---
+
+# Verify ResourceQuota
+
+```bash
+# Describe the ResourceQuota
+kubectl describe quota dev-quota -n dev
+```
+
+---
+
+# Explanation of ResourceQuota Fields
+
+## requests.cpu
+
+```yaml
+requests.cpu: "2"
+```
+
+This is the total CPU requested by all pods inside the namespace.
+
+---
+
+## limits.cpu
+
+```yaml
+limits.cpu: "2"
+```
+
+This is the maximum CPU limit allowed for all pods combined.
+
+---
+
+## requests.memory
+
+```yaml
+requests.memory: "2Gi"
+```
+
+Total memory requested by all pods.
+
+---
+
+## limits.memory
+
+```yaml
+limits.memory: "4Gi"
+```
+
+Maximum memory limit allowed for all pods combined.
+
+---
+
+## pods
+
+```yaml
+pods: "10"
+```
+
+Maximum number of pods allowed in the namespace.
+
+---
+
+# What Happens if Quota is Exceeded?
+
+If a deployment tries to:
+
+- Launch an 11th pod
+- Request more CPU
+- Request more memory
+
+Kubernetes will reject the request immediately.
+
+You must either:
+
+- Increase the quota
+- Scale down existing workloads
+
+---
+
+# Demo 2: ResourceQuota with Deployment
+
+---
+
+# Create Namespace
+
+```bash
+# Create namespace
+kubectl create namespace dev-team
+```
+
+---
+
+# Define ResourceQuota
+
+We will allow:
+
+- Maximum 5 pods
+- CPU requests: 250m
+- Memory requests: 1Gi
+- CPU limits: 500m
+- Memory limits: 2Gi
+
+---
+
+# Create ResourceQuota File
+
+```bash
+# Create YAML file
+vim resource-quota2.yml
+```
+
+---
+
+# ResourceQuota YAML
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+
+metadata:
+  # ResourceQuota name
+  name: dev-resource-quota
+
+  # Namespace where quota is applied
+  namespace: dev-team
+
+spec:
+  hard:
+
+    # Maximum pods allowed
+    pods: "5"
+
+    # Total CPU requests allowed
+    requests.cpu: "250m"
+
+    # Total memory requests allowed
+    requests.memory: "1Gi"
+
+    # Total CPU limits allowed
+    limits.cpu: "500m"
+
+    # Total memory limits allowed
+    limits.memory: "2Gi"
+```
+
+---
+
+# Apply ResourceQuota
+
+```bash
+# Apply ResourceQuota
+kubectl apply -f resource-quota2.yml
+```
+
+---
+
+# Create Deployment
+
+Each pod will use:
+
+## Requests
+
+- CPU: 50m
+- Memory: 256Mi
+
+## Limits
+
+- CPU: 100m
+- Memory: 512Mi
+
+We will create 2 pods.
+
+Total usage becomes:
+```
+| Resource | Total |
+|---|---|
+| CPU Requests | 100m |
+| Memory Requests | 512Mi |
+| CPU Limits | 200m |
+| Memory Limits | 1Gi |
+```
+This is within the quota.
+
+---
+
+# Create Deployment YAML
+
+```bash
+# Create deployment YAML
+vim deployment-resource.yml
+```
+
+---
+
+# Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: nginx-deployment
+
+  # Namespace for deployment
+  namespace: dev-team
+
+spec:
+  # Number of pods
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: nginx
+
+  template:
+    metadata:
+      labels:
+        app: nginx
+
+    spec:
+      containers:
+        - name: nginx
+
+          # NGINX image
+          image: nginx
+
+          resources:
+
+            requests:
+              # Requested CPU
+              cpu: "50m"
+
+              # Requested memory
+              memory: "256Mi"
+
+            limits:
+              # Maximum CPU allowed
+              cpu: "100m"
+
+              # Maximum memory allowed
+              memory: "512Mi"
+```
+
+---
+
+# Apply Deployment
+
+```bash
+# Apply deployment
+kubectl apply -f deployment-resource.yml
+```
+
+---
+
+# Verify Quota Usage
+
+```bash
+# Check quota usage
+kubectl describe quota dev-resource-quota -n dev-team
+```
+
+You should see current resource usage within quota limits.
+
+---
+
+# Try to Break the Quota
+
+Now scale the deployment to 6 replicas.
+
+Example:
+
+```bash
+# Scale deployment to 6 pods
+kubectl scale deployment nginx-deployment --replicas=6 -n dev-team
+```
+
+You may see an error like:
+
+```bash
+pods "deploymentName" is forbidden: exceeded quota: dev-resource-quota
+```
+
+---
+
+# Why Did it Fail?
+
+Because:
+
+## CPU Request Calculation
+
+```text
+6 pods × 50m CPU = 300m CPU
+```
+
+But quota allows only:
+
+```text
+250m CPU
+```
+
+---
+
+## Memory Request Calculation
+
+```text
+6 pods × 256Mi = 1.5Gi
+```
+
+But quota allows only:
+
+```text
+1Gi memory
+```
+
+Therefore Kubernetes rejects pod creation.
+
+---
+
+# Resource Usage Table
+```
+| Limit Type | Per Pod | 2 Pods Total | Quota Limit |
+|---|---|---|---|
+| Requests CPU | 50m | 100m | 250m |
+| Requests Memory | 256Mi | 512Mi | 1Gi |
+| Limits CPU | 100m | 200m | 500m |
+| Limits Memory | 512Mi | 1Gi | 2Gi |
+```
+---
+
+# View Namespace Events
+
+```bash
+# View events sorted by timestamp
+kubectl get events -n dev-team --sort-by='.lastTimestamp'
+```
+
+This helps identify:
+
+- Which controller tried creating pods
+- Why pod creation failed
+- Requested vs allowed resources
+
+---
+
+# Describe Deployment
+
+```bash
+# Describe deployment
+kubectl describe deployment nginx-deployment -n dev-team
+```
+
+This shows quota-related errors and events.
+
+---
+
+# Important Concept
+
+ResourceQuota is enforced by the Kubernetes API Server.
+
+If quota is exceeded:
+
+- Pod creation is rejected immediately
+- Pod is never scheduled
+- Scheduler is not involved
+
+---
+
+# ResourceQuota Metrics in Prometheus & Grafana
+
+Useful metrics from `kube-state-metrics`:
+
+---
+
+# kube_resourcequota
+
+Shows:
+
+- Current quota usage
+- Hard limits
+
+---
+
+# kube_resourcequota_status_hard
+
+Shows configured hard limits for:
+
+- CPU
+- Memory
+- Pods
+- PVCs
+
+---
+
+# kube_resourcequota_status_used
+
+Shows currently used resources inside the namespace.
+
+---
+
+# Summary
+
+ResourceQuota helps:
+
+- Prevent resource overconsumption
+- Control namespace usage
+- Improve cluster stability
+- Enforce fair resource allocation
+
+It is extremely useful in:
+
+- Multi-team clusters
+- Shared Kubernetes environments
+- Production clusters
