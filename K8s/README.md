@@ -5645,6 +5645,381 @@ Choosing the right deployment strategy depends on:
 - Deployment safety requirements
 
 
+--------------------------------------------------------------------------
+
+# Annotations Concept in Canary Deployment
+
+## What are Annotations in Kubernetes?
+
+Annotations are key-value metadata attached to Kubernetes objects.
+
+They are mainly used to:
+
+- Provide additional information
+- Configure external tools/controllers
+- Store non-identifying metadata
+
+Unlike labels:
+
+- Labels are used for selection/filtering
+- Annotations are used for configuration and instructions
+
+---
+
+# Syntax of Annotations
+
+Annotations are written inside:
+
+```yaml
+metadata:
+  annotations:
+```
+
+Example:
+
+```yaml
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+```
+
+---
+
+# Why Annotations are Important in Canary Deployment?
+
+In Canary deployment:
+
+- NGINX Ingress Controller reads annotations
+- Based on annotations, it decides:
+  - How much traffic goes to canary version
+  - Which ingress is stable
+  - Which ingress is canary
+
+Without annotations:
+
+- NGINX treats ingress as normal ingress
+- No traffic splitting happens
+
+---
+
+# Main Canary Annotations
+
+## 1. Enable Canary Deployment
+
+```yaml
+nginx.ingress.kubernetes.io/canary: "true"
+```
+
+### Meaning
+
+This tells NGINX:
+
+"This ingress is a canary ingress."
+
+---
+
+# What Happens Internally?
+
+Suppose we have:
+
+- Stable ingress
+- Canary ingress
+
+When NGINX sees:
+
+```yaml
+nginx.ingress.kubernetes.io/canary: "true"
+```
+
+it understands:
+
+- This ingress should receive only partial traffic
+- Not full production traffic
+
+---
+
+# 2. Canary Weight Annotation
+
+```yaml
+nginx.ingress.kubernetes.io/canary-weight: "20"
+```
+
+### Meaning
+
+Send:
+
+- 20% traffic → Canary version
+- 80% traffic → Stable version
+
+---
+
+# Traffic Flow Example
+
+```text
+100 Requests Coming to Application
+        |
+        |
+   NGINX Ingress
+      /     \
+     /       \
+80 Requests   20 Requests
+to v1         to v2
+```
+
+---
+
+# Complete Canary Ingress Example
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+
+metadata:
+  # Canary ingress name
+  name: ingress-canary
+
+  annotations:
+
+    # Enable canary deployment
+    nginx.ingress.kubernetes.io/canary: "true"
+
+    # Send 20% traffic to canary version
+    nginx.ingress.kubernetes.io/canary-weight: "20"
+
+spec:
+  ingressClassName: nginx
+
+  rules:
+    - host: website01.example.com
+
+      http:
+        paths:
+          - path: "/"
+            pathType: Prefix
+
+            backend:
+              service:
+                # Canary service
+                name: mysvc-canary
+
+                port:
+                  number: 80
+```
+
+---
+
+# Step-by-Step Working
+
+## Step 1
+
+User sends request:
+
+```text
+http://website01.example.com
+```
+
+---
+
+## Step 2
+
+NGINX ingress controller receives request.
+
+---
+
+## Step 3
+
+NGINX checks annotations.
+
+It sees:
+
+```yaml
+nginx.ingress.kubernetes.io/canary: "true"
+```
+
+So it knows:
+
+- Canary routing is enabled
+
+---
+
+## Step 4
+
+NGINX checks traffic percentage:
+
+```yaml
+nginx.ingress.kubernetes.io/canary-weight: "20"
+```
+
+Meaning:
+
+- 20% requests → Canary service
+- 80% requests → Stable service
+
+---
+
+# Real Example
+
+Suppose 10 requests arrive.
+
+Approximate routing:
+```
+| Request Number | Destination |
+|---|---|
+| 1 | Stable |
+| 2 | Stable |
+| 3 | Canary |
+| 4 | Stable |
+| 5 | Stable |
+| 6 | Stable |
+| 7 | Canary |
+| 8 | Stable |
+| 9 | Stable |
+| 10 | Stable |
+```
+Approximately 20% goes to canary.
+
+---
+
+# Why Use Canary Weight?
+
+It allows:
+
+- Safe testing
+- Gradual rollout
+- Controlled production exposure
+
+Instead of risking all users.
+
+---
+
+# Gradual Traffic Increase
+
+Initially:
+
+```yaml
+nginx.ingress.kubernetes.io/canary-weight: "10"
+```
+
+Later:
+
+```yaml
+nginx.ingress.kubernetes.io/canary-weight: "30"
+```
+
+Then:
+
+```yaml
+nginx.ingress.kubernetes.io/canary-weight: "50"
+```
+
+Finally:
+
+```yaml
+nginx.ingress.kubernetes.io/canary-weight: "100"
+```
+
+---
+
+# Rollback in Canary Deployment
+
+If issues occur:
+
+Simply:
+
+```yaml
+nginx.ingress.kubernetes.io/canary-weight: "0"
+```
+
+OR delete canary ingress.
+
+Traffic immediately returns to stable version.
+
+---
+
+# Other Canary Annotations
+
+NGINX also supports advanced canary annotations.
+
+---
+
+# Canary by Header
+
+```yaml
+nginx.ingress.kubernetes.io/canary-by-header: "X-Canary"
+```
+
+Only users with specific header go to canary version.
+
+---
+
+# Canary by Cookie
+
+```yaml
+nginx.ingress.kubernetes.io/canary-by-cookie: "canary"
+```
+
+Only users with specific cookie go to canary version.
+
+---
+
+# Difference Between Labels and Annotations
+```
+| Feature | Labels | Annotations |
+|---|---|
+| Purpose | Identification | Configuration |
+| Used For | Selection/filtering | Metadata/instructions |
+| Size Limit | Small | Can be larger |
+| Example | app=nginx | canary-weight=20 |
+```
+---
+
+# Important Concept
+
+Annotations are not used by Kubernetes scheduler directly.
+
+Instead:
+
+- External controllers
+- Operators
+- Ingress controllers
+
+read annotations and act accordingly.
+
+In Canary deployment:
+
+NGINX Ingress Controller reads canary annotations and performs traffic splitting.
+
+---
+
+# Summary
+
+In Canary Deployment:
+
+Annotations control:
+
+- Whether canary routing is enabled
+- How much traffic goes to canary version
+- Advanced routing behavior
+
+Main annotations:
+
+```yaml
+# Enable canary deployment
+nginx.ingress.kubernetes.io/canary: "true"
+```
+
+```yaml
+# Send 20% traffic to canary version
+nginx.ingress.kubernetes.io/canary-weight: "20"
+```
+
+
+
+--------------------------------------------------------------------------
+
+
+
+
 # Canary Deployment in Kubernetes
 
 ## What is Canary Deployment?
