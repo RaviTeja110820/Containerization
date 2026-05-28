@@ -4761,3 +4761,352 @@ It is extremely useful in:
 - Multi-team clusters
 - Shared Kubernetes environments
 - Production clusters
+
+
+# LimitRanges in Kubernetes
+
+## What is LimitRange?
+
+`LimitRange` is a Kubernetes resource used to define:
+
+- Default CPU requests
+- Default memory requests
+- Default CPU limits
+- Default memory limits
+- Minimum resource values
+- Maximum resource values
+
+for containers or pods inside a namespace.
+
+---
+
+# Why Use LimitRange?
+
+Without LimitRange:
+
+- Pods may run without limits
+- Containers may consume unlimited CPU/memory
+- Other applications may suffer resource starvation
+
+With LimitRange:
+
+- Default values are assigned automatically
+- Resource usage becomes controlled
+- Teams follow standard resource policies
+
+---
+
+# Create Namespace
+
+```bash
+# Create namespace
+kubectl create namespace dev-team
+```
+
+---
+
+# Create LimitRange YAML
+
+```bash
+# Create LimitRange YAML file
+vim limitrange.yml
+```
+
+---
+
+# LimitRange YAML Example
+
+```yaml
+apiVersion: v1
+kind: LimitRange
+
+metadata:
+  # Name of LimitRange object
+  name: default-limits
+
+  # Namespace where LimitRange is applied
+  namespace: dev-team
+
+spec:
+  limits:
+    - type: Container
+
+      default:
+        # Default CPU limit if container does not specify one
+        cpu: "100m"
+
+        # Default memory limit if container does not specify one
+        memory: "256Mi"
+
+      defaultRequest:
+        # Default CPU request if not specified
+        cpu: "50m"
+
+        # Default memory request if not specified
+        memory: "128Mi"
+
+      min:
+        # Minimum CPU allowed
+        cpu: "10m"
+
+        # Minimum memory allowed
+        memory: "64Mi"
+
+      max:
+        # Maximum CPU allowed
+        cpu: "500m"
+
+        # Maximum memory allowed
+        memory: "512Mi"
+```
+
+---
+
+# Apply LimitRange
+
+```bash
+# Apply LimitRange configuration
+kubectl apply -f limitrange.yml
+```
+
+---
+
+# What Happens After Applying LimitRange?
+
+Now if a container is created without specifying:
+
+- CPU requests
+- Memory requests
+- CPU limits
+- Memory limits
+
+Kubernetes automatically assigns default values from LimitRange.
+
+---
+
+# Example Pod Without Requests/Limits
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  # Pod name
+  name: test-pod
+
+  # Namespace
+  namespace: dev-team
+
+spec:
+  containers:
+    - name: nginx
+
+      # NGINX image
+      image: nginx
+```
+
+---
+
+# Create Pod
+
+```bash
+# Create pod
+kubectl apply -f pod-limit.yml
+```
+
+---
+
+# Describe Pod
+
+```bash
+# Describe pod details
+kubectl describe pod test-pod -n dev-team
+```
+
+Under the container section, Kubernetes automatically adds:
+
+- Default CPU request
+- Default memory request
+- Default CPU limit
+- Default memory limit
+
+from the LimitRange configuration.
+
+---
+
+# Using ResourceQuota and LimitRange Together
+
+ResourceQuota controls:
+
+- Total namespace resource usage
+- Total CPU usage
+- Total memory usage
+- Total pod count
+
+LimitRange controls:
+
+- Default resource values
+- Minimum resource values
+- Maximum resource values
+- Per-container resource policies
+
+---
+
+# ResourceQuota YAML
+
+```yaml
+apiVersion: v1
+kind: ResourceQuota
+
+metadata:
+  # ResourceQuota name
+  name: dev-quota
+
+  # Namespace where quota is applied
+  namespace: dev-team
+
+spec:
+  hard:
+
+    # Maximum number of pods
+    pods: "5"
+
+    # Total CPU requests allowed
+    requests.cpu: "500m"
+
+    # Total memory requests allowed
+    requests.memory: "1Gi"
+
+    # Total CPU limits allowed
+    limits.cpu: "1"
+
+    # Total memory limits allowed
+    limits.memory: "2Gi"
+```
+
+---
+
+# LimitRange YAML
+
+```yaml
+apiVersion: v1
+kind: LimitRange
+
+metadata:
+  # LimitRange name
+  name: dev-limits
+
+  # Namespace where LimitRange is applied
+  namespace: dev-team
+
+spec:
+  limits:
+    - type: Container
+
+      default:
+        # Default CPU limit
+        cpu: "100m"
+
+        # Default memory limit
+        memory: "256Mi"
+
+      defaultRequest:
+        # Default CPU request
+        cpu: "50m"
+
+        # Default memory request
+        memory: "128Mi"
+
+      min:
+        # Minimum CPU allowed
+        cpu: "10m"
+
+        # Minimum memory allowed
+        memory: "64Mi"
+
+      max:
+        # Maximum CPU allowed
+        cpu: "300m"
+
+        # Maximum memory allowed
+        memory: "512Mi"
+```
+
+---
+
+# Pod Exceeding Maximum Limits
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  # Pod name
+  name: bad-pod
+
+  # Namespace
+  namespace: dev-team
+
+spec:
+  containers:
+    - name: nginx
+
+      # NGINX image
+      image: nginx
+
+      resources:
+
+        requests:
+          # Requested CPU exceeds max
+          cpu: "500m"
+
+          # Requested memory exceeds max
+          memory: "1Gi"
+
+        limits:
+          # CPU limit exceeds allowed max
+          cpu: "600m"
+
+          # Memory limit exceeds allowed max
+          memory: "1.5Gi"
+```
+
+---
+
+# Create Bad Pod
+
+```bash
+# Try creating pod
+kubectl create -f bad-pod.yml
+```
+
+---
+
+# Expected Error
+
+```bash
+Error from server (Forbidden): pods "bad-pod" is forbidden: exceeded the max cpu limit per container
+```
+
+---
+
+# Difference Between ResourceQuota and LimitRange
+```
+| Feature | ResourceQuota | LimitRange |
+|---|---|---|
+| Scope | Namespace total usage | Per container/pod |
+| Controls | Total resources | Default/min/max resources |
+| Purpose | Prevent namespace overuse | Standardize container resources |
+```
+---
+
+# Summary
+
+LimitRange helps:
+
+- Automatically assign default resources
+- Prevent containers from using excessive resources
+- Enforce min/max resource rules
+- Improve cluster fairness and stability
+
+Combined with ResourceQuota, it provides strong resource management in Kubernetes.
