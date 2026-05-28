@@ -5110,3 +5110,873 @@ LimitRange helps:
 - Improve cluster fairness and stability
 
 Combined with ResourceQuota, it provides strong resource management in Kubernetes.
+
+
+# Kubernetes Deployment Strategies
+
+This document explains the deployment strategies shown in the images.
+
+---
+
+# 1. Recreate Deployment Strategy
+
+## Concept
+
+In Recreate strategy:
+
+- Old version pods (v1) are deleted first
+- New version pods (v2) are created afterward
+
+---
+
+# Flow
+
+```text
+Delete Old Pods (v1)
+        ↓
+Application Downtime
+        ↓
+Create New Pods (v2)
+```
+
+---
+
+# Example from Image
+
+Suppose:
+
+- v1 pods are currently running
+- You want to deploy v2
+
+Kubernetes will:
+
+1. Delete all v1 pods
+2. Create v2 pods
+
+---
+
+# Important Point
+
+Because old pods are deleted before new pods are ready:
+
+## Downtime occurs
+
+Users cannot access the application temporarily.
+
+---
+
+# Advantages
+
+- Simple deployment strategy
+- Easy to configure
+- No compatibility issues between versions
+
+---
+
+# Disadvantages
+
+- Causes downtime
+- Not suitable for production critical applications
+
+---
+
+# Best Use Cases
+
+Use Recreate strategy for:
+
+- Development environments
+- Testing environments
+- Non-critical applications
+
+---
+
+# Recreate Deployment YAML Example
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: recreate-demo
+
+spec:
+  replicas: 3
+
+  strategy:
+    # Recreate deployment strategy
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app: myapp
+
+  template:
+    metadata:
+      labels:
+        app: myapp
+
+    spec:
+      containers:
+        - name: app
+
+          # Application image
+          image: nginx
+```
+
+---
+
+# 2. Rolling Update Strategy
+
+## Concept
+
+Rolling Update is the default deployment strategy in Kubernetes.
+
+Instead of deleting all old pods together:
+
+- One new pod is created
+- One old pod is deleted
+
+This process continues gradually.
+
+---
+
+# Flow
+
+```text
+Create New Pod
+      ↓
+Delete Old Pod
+      ↓
+Repeat Until Update Completes
+```
+
+---
+
+# Important Parameters
+
+## maxUnavailable
+
+Defines:
+
+How many old pods can be unavailable during deployment.
+
+Example:
+
+```yaml
+maxUnavailable: 1
+```
+
+Means:
+
+Only 1 old pod can be unavailable at a time.
+
+---
+
+## maxSurge
+
+Defines:
+
+How many extra pods can be created temporarily.
+
+Example:
+
+```yaml
+maxSurge: 1
+```
+
+Means:
+
+Kubernetes can create 1 extra pod during update.
+
+---
+
+# Advantages
+
+- No downtime
+- Built into Kubernetes
+- Safer than recreate strategy
+- Good for most applications
+
+---
+
+# Disadvantages
+
+- Old and new versions run simultaneously
+- Possible compatibility issues
+- Slower deployment process
+
+---
+
+# Rolling Update YAML Example
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: rolling-update-demo
+
+spec:
+  replicas: 3
+
+  strategy:
+    type: RollingUpdate
+
+    rollingUpdate:
+      # Maximum unavailable pods
+      maxUnavailable: 1
+
+      # Extra pods created during update
+      maxSurge: 1
+
+  selector:
+    matchLabels:
+      app: myapp
+
+  template:
+    metadata:
+      labels:
+        app: myapp
+
+    spec:
+      containers:
+        - name: app
+
+          # Application image
+          image: nginx
+```
+
+---
+
+# Example Explanation
+
+Suppose:
+
+Current pods:
+
+```text
+v1 v1 v1
+```
+
+During update:
+
+```text
+v1 v1 v2
+```
+
+Then:
+
+```text
+v1 v2 v2
+```
+
+Finally:
+
+```text
+v2 v2 v2
+```
+
+---
+
+# 3. Blue-Green Deployment
+
+## Concept
+
+Blue-Green deployment maintains:
+
+- Two separate environments
+- Blue = Current production version
+- Green = New version
+
+Traffic switches instantly from blue to green.
+
+---
+
+# Flow
+
+```text
+Blue Environment → Current Live Version
+Green Environment → New Version
+
+Switch Traffic from Blue → Green
+```
+
+---
+
+# Important Concepts from Image
+
+## Maintain Two Environments
+
+You maintain:
+
+- Old environment
+- New environment
+
+Both run simultaneously.
+
+---
+
+# Traffic Switching
+
+Traffic is switched instantly to new version.
+
+---
+
+# Rollback
+
+If issues occur:
+
+- Switch traffic back to old version immediately
+
+Rollback is extremely fast.
+
+---
+
+# Advantages
+
+- Zero downtime
+- Very fast rollback
+- Full testing before production switch
+- Safer deployments
+
+---
+
+# Disadvantages
+
+- Requires double infrastructure
+- More expensive
+
+---
+
+# Best Use Cases
+
+Use Blue-Green for:
+
+- Critical production applications
+- Banking systems
+- E-commerce applications
+
+---
+
+# Blue-Green Deployment Diagram
+
+```text
+                +------------------+
+                |     Service      |
+                +------------------+
+                   /            \
+                  /              \
+         +-------------+   +-------------+
+         | Blue Env    |   | Green Env   |
+         | Current App |   | New App     |
+         +-------------+   +-------------+
+```
+
+---
+
+# 4. Canary Deployment
+
+## Concept
+
+Canary deployment runs:
+
+- Old version
+- New version
+
+simultaneously.
+
+Traffic is divided between both versions.
+
+---
+
+# Traffic Distribution
+
+Example:
+
+- 80% traffic → Old version
+- 20% traffic → New version
+
+Gradually:
+
+- Increase traffic to new version
+
+---
+
+# Important Concepts from Image
+
+## Single Service
+
+Both versions are accessed through same application endpoint.
+
+---
+
+# Gradual Traffic Shift
+
+Initially:
+
+```text
+80% → Old Version
+20% → New Version
+```
+
+Later:
+
+```text
+50% → Old Version
+50% → New Version
+```
+
+Finally:
+
+```text
+100% → New Version
+```
+
+---
+
+# Rollback
+
+Rollback is easy.
+
+Simply increase traffic back to old version.
+
+---
+
+# Advantages
+
+- Lowest deployment risk
+- Zero downtime
+- Real production testing
+- Fast rollback
+- Controlled rollout
+
+---
+
+# Disadvantages
+
+- More complex configuration
+- Requires traffic management tools
+
+---
+
+# Canary Deployment Diagram
+
+```text
+                    +----------------------+
+                    |    NGINX Ingress     |
+                    +----------------------+
+                         /            \
+                        /              \
+               80% Traffic          20% Traffic
+                     /                    \
+                    /                      \
+        +------------------+     +----------------------+
+        | Stable Version   |     | Canary Version       |
+        +------------------+     +----------------------+
+```
+
+---
+
+# Comparison Table
+```
+| Strategy | Downtime | Rollback | Risk | Infrastructure |
+|---|---|---|---|---|
+| Recreate | Yes | Slow | High | Low |
+| Rolling Update | No | Medium | Medium | Low |
+| Blue-Green | No | Fast | Low | High |
+| Canary | No | Very Fast | Very Low | Medium |
+```
+---
+
+# Which Strategy Should You Use?
+
+## Recreate
+
+Use for:
+- Testing
+- Development
+- Non-critical apps
+
+---
+
+## Rolling Update
+
+Use for:
+- General applications
+- Most Kubernetes workloads
+
+---
+
+## Blue-Green
+
+Use for:
+- Critical applications
+- Applications requiring instant rollback
+
+---
+
+## Canary
+
+Use for:
+- Production systems
+- Gradual feature rollout
+- Safe deployments
+
+---
+
+# Summary
+
+Kubernetes supports multiple deployment strategies.
+
+Each strategy has different:
+
+- Risk levels
+- Downtime behavior
+- Rollback speed
+- Infrastructure requirements
+
+Choosing the right deployment strategy depends on:
+
+- Application criticality
+- Downtime tolerance
+- Infrastructure budget
+- Deployment safety requirements
+
+
+# Canary Deployment in Kubernetes
+
+## What is Canary Deployment?
+
+Canary Deployment is a deployment strategy where:
+
+- Two versions of an application run simultaneously
+- Small percentage of traffic goes to the new version first
+- Remaining traffic continues going to stable version
+
+This helps test the new version safely before sending all traffic to it.
+
+---
+
+# Canary Deployment Architecture Diagram
+
+```text
+                    +----------------------+
+                    |    NGINX Ingress     |
+                    +----------------------+
+                         /            \
+                        /              \
+               80% Traffic          20% Traffic
+                     /                    \
+                    /                      \
+        +------------------+     +----------------------+
+        | Stable Ingress   |     | Canary Ingress       |
+        +------------------+     +----------------------+
+                 |                          |
+                 |                          |
+        +------------------+     +----------------------+
+        | Service v1       |     | Service v2 Canary    |
+        +------------------+     +----------------------+
+                 |                          |
+                 |                          |
+        +------------------+     +----------------------+
+        | Deployment v1    |     | Deployment v2        |
+        | app = stable     |     | app = canary         |
+        +------------------+     +----------------------+
+```
+
+---
+
+# Stable Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: app-deploy-v1-stable
+
+spec:
+  # Number of pods
+  replicas: 3
+
+  selector:
+    matchLabels:
+      # Application label
+      app: kubeserve
+
+      # Stable version label
+      version: stable
+
+  template:
+    metadata:
+      labels:
+        # Application label
+        app: kubeserve
+
+        # Stable version label
+        version: stable
+
+    spec:
+      containers:
+        - name: c1
+
+          # Stable application image
+          image: leaddevops/kubeserve:v1
+```
+
+---
+
+# Stable Service YAML
+
+```yaml
+apiVersion: v1
+kind: Service
+
+metadata:
+  # Service name
+  name: mysvc
+
+spec:
+  # NodePort service type
+  type: NodePort
+
+  selector:
+    # Select stable pods only
+    app: kubeserve
+    version: stable
+
+  ports:
+    - targetPort: 80
+
+      # Service port
+      port: 80
+```
+
+---
+
+# Canary Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Canary deployment name
+  name: app-deploy-v2-canary
+
+spec:
+  # Number of pods
+  replicas: 3
+
+  selector:
+    matchLabels:
+      # Application label
+      app: kubeserve
+
+      # Canary version label
+      version: canary
+
+  template:
+    metadata:
+      labels:
+        # Application label
+        app: kubeserve
+
+        # Canary version label
+        version: canary
+
+    spec:
+      containers:
+        - name: c1
+
+          # Canary image
+          image: leaddevops/kubeserve:v2
+```
+
+---
+
+# Canary Service YAML
+
+```yaml
+apiVersion: v1
+kind: Service
+
+metadata:
+  # Canary service name
+  name: mysvc-canary
+
+spec:
+  # NodePort service
+  type: NodePort
+
+  selector:
+    # Select canary pods only
+    app: kubeserve
+    version: canary
+
+  ports:
+    - targetPort: 80
+
+      # Service port
+      port: 80
+```
+
+---
+
+# Stable Ingress YAML
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+
+metadata:
+  # Stable ingress name
+  name: ingress-stable
+
+spec:
+  # Use nginx ingress controller
+  ingressClassName: nginx
+
+  rules:
+    - host: website01.example.com
+
+      http:
+        paths:
+          - pathType: Prefix
+
+            # Route all traffic
+            path: "/"
+
+            backend:
+              service:
+                # Stable service
+                name: mysvc
+
+                port:
+                  number: 80
+```
+
+---
+
+# Canary Ingress YAML
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+
+metadata:
+  # Canary ingress name
+  name: ingress-canary
+
+  annotations:
+
+    # Enable canary deployment
+    nginx.ingress.kubernetes.io/canary: "true"
+
+    # Send 20 percent traffic to canary
+    nginx.ingress.kubernetes.io/canary-weight: "20"
+
+spec:
+  # Use nginx ingress controller
+  ingressClassName: nginx
+
+  rules:
+    - host: website01.example.com
+
+      http:
+        paths:
+          - pathType: Prefix
+
+            # Route all traffic
+            path: "/"
+
+            backend:
+              service:
+                # Canary service
+                name: mysvc-canary
+
+                port:
+                  number: 80
+```
+
+---
+
+# Apply All YAML Files
+
+```bash
+kubectl apply -f deployment-stable.yml
+kubectl apply -f service-stable.yml
+kubectl apply -f deployment-canary.yml
+kubectl apply -f service-canary.yml
+kubectl apply -f ingress-stable.yml
+kubectl apply -f ingress-canary.yml
+```
+
+---
+
+# Configure Hosts File
+
+```bash
+# Become root user
+sudo su -
+
+# Edit hosts file
+vim /etc/hosts
+```
+
+Add:
+
+```text
+35.238.236.214 website01.example.com
+```
+
+---
+
+# Test Traffic Distribution
+
+```bash
+while true; do
+  curl http://website01.example.com/
+  sleep 1
+done
+```
+
+---
+
+# Expected Output
+
+You will observe:
+
+- 80 percent traffic goes to v1
+- 20 percent traffic goes to v2
+
+because of:
+
+```yaml
+nginx.ingress.kubernetes.io/canary-weight: "20"
+```
+
+---
+
+# Advantages of Canary Deployment
+
+- Zero downtime
+- Low deployment risk
+- Easy rollback
+- Real production testing
+- Gradual traffic shifting
+
+---
+
+# Rollback
+
+If v2 fails:
+
+- Remove canary ingress
+OR
+- Set canary weight to 0
+
+Traffic immediately goes back to stable version.
