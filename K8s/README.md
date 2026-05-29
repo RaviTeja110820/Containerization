@@ -6355,3 +6355,997 @@ OR
 - Set canary weight to 0
 
 Traffic immediately goes back to stable version.
+
+
+# Kubernetes Persistent Volumes (PV) and Persistent Volume Claims (PVC)
+
+## What is a Persistent Volume (PV)?
+
+A Persistent Volume (PV) is a storage resource provided by a Kubernetes administrator inside the cluster.
+
+Think of a PV as a storage disk that Kubernetes Pods can use.
+
+A PV contains information such as:
+
+- Storage type
+- Storage capacity
+- Access mode
+- Status
+- StorageClass
+
+---
+
+## Information Stored in a PV
+
+### Storage Type
+
+Examples:
+
+- HostPath
+- NFS
+- AWS EBS
+- Azure Disk
+
+### Capacity
+
+```yaml
+capacity:
+  storage: 1Gi
+```
+
+Means 1Gi storage is available.
+
+### Access Modes
+
+```yaml
+accessModes:
+  - ReadWriteOnce
+```
+
+### Status
+
+Possible states:
+
+- Available
+- Bound
+- Released
+- Failed
+
+### StorageClass
+
+```yaml
+storageClassName: manual
+```
+
+Indicates whether storage was created manually or dynamically.
+
+---
+
+# What is a Persistent Volume Claim (PVC)?
+
+PVC is a request for storage.
+
+Think of PVC as:
+
+> A request raised by an administrator or developer to reserve storage.
+
+PVC specifies:
+
+- Required volume size
+- Access mode
+- Storage class
+
+Example:
+
+```yaml
+resources:
+  requests:
+    storage: 1Gi
+```
+
+---
+
+# PV and PVC Relationship
+
+```text
+Administrator Creates PV
+           ↓
+Developer Creates PVC
+           ↓
+PVC Binds To PV
+           ↓
+Pod Uses PVC
+```
+
+---
+
+# Demo 1: HostPath Volume
+
+## What is HostPath?
+
+HostPath creates storage directly on the worker node filesystem.
+
+Example:
+
+```text
+Worker Node
+   |
+   +-- /tmp/data
+```
+
+The storage physically exists on the node where Pod runs.
+
+---
+
+# Use Cases
+
+Use HostPath when:
+
+- Storage is internal to cluster
+- Learning Kubernetes
+- Testing environments
+- Single node clusters
+
+Not recommended for production.
+
+---
+
+# Step 1: Create Persistent Volume
+
+```bash
+# Create PV YAML
+vim pv.yml
+```
+
+## PV YAML
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+
+metadata:
+  # Persistent Volume name
+  name: block-pv
+
+spec:
+
+  # Storage class name
+  storageClassName: manual
+
+  capacity:
+    # Total storage available
+    storage: 1Gi
+
+  accessModes:
+    # One node can read and write
+    - ReadWriteOnce
+
+  hostPath:
+    # Physical directory on worker node
+    path: /tmp/data
+```
+
+---
+
+# Create PV
+
+```bash
+# Create Persistent Volume
+kubectl create -f pv.yml
+```
+
+---
+
+# Verify PV
+
+```bash
+# View Persistent Volumes
+kubectl get pv
+```
+
+Example:
+
+```text
+NAME       CAPACITY   STATUS
+block-pv   1Gi        Available
+```
+
+---
+
+# Step 2: Create Persistent Volume Claim
+
+```bash
+# Create PVC YAML
+vim pvc.yml
+```
+
+## PVC YAML
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+
+metadata:
+  # PVC name
+  name: pvc
+
+spec:
+
+  resources:
+    requests:
+      # Request 1Gi storage
+      storage: 1Gi
+
+  # Match PV storage class
+  storageClassName: manual
+
+  accessModes:
+    # Must match PV access mode
+    - ReadWriteOnce
+```
+
+---
+
+# Create PVC
+
+```bash
+# Create PVC
+kubectl create -f pvc.yml
+```
+
+---
+
+# Verify PVC
+
+```bash
+# Check PVC
+kubectl get pvc
+```
+
+Example:
+
+```text
+NAME   STATUS   VOLUME
+pvc    Bound    block-pv
+```
+
+---
+
+# What Does Bound Mean?
+
+```text
+PV Available
+      ↓
+PVC Created
+      ↓
+PV Reserved
+      ↓
+Status = Bound
+```
+
+The PV is now reserved for this PVC.
+
+---
+
+# Step 3: Create Pod Using PVC
+
+```bash
+# Create Pod YAML
+vim pod-pvc.yml
+```
+
+## Pod YAML
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  # Pod name
+  name: pod-pvc
+
+spec:
+
+  containers:
+
+    - name: c1
+
+      # NGINX container image
+      image: nginx
+
+      volumeMounts:
+
+        # Mount volume inside container
+        - mountPath: "/data"
+
+          # Volume name reference
+          name: my-volume
+
+  volumes:
+
+    - name: my-volume
+
+      persistentVolumeClaim:
+
+        # PVC used by pod
+        claimName: pvc
+```
+
+---
+
+# Explanation
+
+## volumeMounts
+
+```yaml
+volumeMounts:
+  - mountPath: "/data"
+```
+
+Mounts storage inside container.
+
+Container sees storage at:
+
+```text
+/data
+```
+
+---
+
+## persistentVolumeClaim
+
+```yaml
+persistentVolumeClaim:
+  claimName: pvc
+```
+
+Tells Kubernetes:
+
+Use storage reserved by PVC.
+
+---
+
+# Create Pod
+
+```bash
+# Create Pod
+kubectl create -f pod-pvc.yml
+```
+
+---
+
+# Verify Pod
+
+```bash
+# View Pod and node information
+kubectl get pods -o wide
+```
+
+Example:
+
+```text
+NAME      NODE
+pod-pvc   worker-node
+```
+
+---
+
+# Storage Flow Diagram
+
+```text
+Worker Node
+│
+├── /tmp/data
+│
+└── Persistent Volume (PV)
+          │
+          ▼
+Persistent Volume Claim (PVC)
+          │
+          ▼
+Pod
+          │
+          ▼
+Container Path (/data)
+```
+
+---
+
+# Verify Storage on Worker Node
+
+Login to worker node where pod is running.
+
+Check:
+
+```bash
+# Verify storage directory
+ls -ld /tmp/data
+```
+
+You should see:
+
+```text
+/tmp/data
+```
+
+directory created on the node.
+
+---
+
+# Data Persistence Example
+
+Enter Pod:
+
+```bash
+# Open shell inside pod
+kubectl exec -it pod-pvc -- bash
+```
+
+Create file:
+
+```bash
+echo "Hello PV" > /data/test.txt
+```
+
+Delete Pod:
+
+```bash
+kubectl delete pod pod-pvc
+```
+
+Create Pod again.
+
+The file still exists because data is stored in PV.
+
+---
+
+# PV Lifecycle
+
+```text
+Available
+   ↓
+Bound
+   ↓
+In Use
+   ↓
+Released
+```
+
+---
+
+# Real World Flow
+
+```text
+Administrator Creates PV
+            ↓
+Developer Creates PVC
+            ↓
+PVC Binds To PV
+            ↓
+Pod Uses PVC
+            ↓
+Application Stores Data
+```
+
+---
+
+# Summary
+
+## Persistent Volume (PV)
+
+- Actual storage resource
+- Created by administrator
+- Provides storage
+
+## Persistent Volume Claim (PVC)
+
+- Requests storage
+- Reserves storage
+- Binds to PV
+
+## Pod
+
+- Uses PVC
+- Mounts storage inside container
+
+---
+
+# Final Architecture
+
+```text
+Persistent Volume (PV)
+        │
+        ▼
+Persistent Volume Claim (PVC)
+        │
+        ▼
+Pod
+        │
+        ▼
+Container Path (/data)
+        │
+        ▼
+Physical Storage (/tmp/data)
+```
+
+
+# Dynamic Provisioning of Volumes in Kubernetes
+
+# What is Dynamic Provisioning?
+
+In traditional Persistent Volumes:
+
+- Administrator manually creates PV
+- User creates PVC
+- PVC binds to PV
+
+This is called **Static Provisioning**.
+
+In Dynamic Provisioning:
+
+- No need to manually create PV
+- Kubernetes automatically creates storage
+- Kubernetes automatically creates PV
+- PVC automatically binds to the PV
+
+This process is handled using a **StorageClass**.
+
+---
+
+# Role of CSI (Container Storage Interface)
+
+Kubernetes includes a plugin framework called:
+
+```text
+CSI (Container Storage Interface)
+```
+
+CSI is responsible for:
+
+- Connecting Kubernetes to cloud storage providers
+- Creating storage automatically
+- Managing storage lifecycle
+- Attaching storage to nodes
+
+Examples:
+
+- Google Persistent Disk
+- AWS EBS
+- Azure Disk
+- NetApp
+- Ceph
+
+---
+
+# Dynamic Provisioning Flow
+
+## Step 1
+
+User creates a PVC.
+
+```text
+Need 10Gi SSD Storage
+```
+
+---
+
+## Step 2
+
+PVC references a StorageClass.
+
+Example:
+
+```yaml
+storageClassName: fast
+```
+
+---
+
+## Step 3
+
+CSI Driver contacts cloud provider.
+
+Example:
+
+```text
+Google Cloud Platform
+```
+
+---
+
+## Step 4
+
+Cloud creates storage.
+
+Example:
+
+```text
+10Gi SSD Persistent Disk
+```
+
+---
+
+## Step 5
+
+Kubernetes automatically creates a PV.
+
+---
+
+## Step 6
+
+PV binds to PVC.
+
+---
+
+## Step 7
+
+Pod uses PVC.
+
+---
+
+# Diagram Based on Image
+
+```text
+                  +---------------------+
+                  |    Kubernetes       |
+                  |      Cluster        |
+                  +---------------------+
+                            |
+                            |
+                            ▼
+                  +---------------------+
+                  |   StorageClass      |
+                  |      fast           |
+                  +---------------------+
+                            |
+                            |
+                            ▼
+                 +-----------------------+
+                 |   CSI Driver          |
+                 | Container Storage     |
+                 | Interface             |
+                 +-----------------------+
+                            |
+                            |
+                            ▼
+        +-----------------------------------------+
+        | Google Cloud Platform                   |
+        | Persistent Disk Storage                 |
+        |                                         |
+        |         10Gi SSD Disk                   |
+        +-----------------------------------------+
+                            |
+                            |
+                            ▼
+                 +----------------------+
+                 | Persistent Volume    |
+                 |      (PV)            |
+                 +----------------------+
+                            |
+                            |
+                            ▼
+                 +----------------------+
+                 | Persistent Volume    |
+                 | Claim (PVC)          |
+                 +----------------------+
+                            |
+                            |
+                            ▼
+                 +----------------------+
+                 |        Pod           |
+                 +----------------------+
+                            |
+                            |
+                            ▼
+                 +----------------------+
+                 | Mounted Storage      |
+                 |      /data           |
+                 +----------------------+
+```
+![DynamicProvision](images/Dynamic_Provision.jpg)
+
+![PVC](images/pvc.jpg)
+---
+
+# Why StorageClass is Required?
+
+StorageClass tells Kubernetes:
+
+- Which storage provider to use
+- What type of disk to create
+- Which CSI driver to use
+
+Without StorageClass:
+
+- Dynamic provisioning cannot happen
+
+---
+
+# StorageClass YAML
+
+Create file:
+
+```bash
+# Create StorageClass YAML
+vim sc.yml
+```
+
+## StorageClass Definition
+
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+
+metadata:
+  # StorageClass name
+  name: fast
+
+# Provisioner used to create storage
+provisioner: kubernetes.io/gce-pd
+
+parameters:
+
+  # Create SSD based disk
+  type: pd-ssd
+```
+
+---
+
+# Explanation
+
+## StorageClass Name
+
+```yaml
+name: fast
+```
+
+Used by PVC.
+
+---
+
+## Provisioner
+
+```yaml
+provisioner: kubernetes.io/gce-pd
+```
+
+Tells Kubernetes:
+
+Use Google Persistent Disk service.
+
+---
+
+## Parameters
+
+```yaml
+parameters:
+  type: pd-ssd
+```
+
+Create SSD disk.
+
+---
+
+# Create PVC
+
+Create file:
+
+```bash
+# Create PVC YAML
+vim pvc-pd.yml
+```
+
+## PVC YAML
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+
+metadata:
+  # PVC name
+  name: sc-pvc
+
+spec:
+
+  # StorageClass to use
+  storageClassName: fast
+
+  resources:
+    requests:
+
+      # Request 10Gi storage
+      storage: 10Gi
+
+  accessModes:
+
+    # One node can read/write
+    - ReadWriteOnce
+```
+
+---
+
+# What Happens When PVC is Created?
+
+Kubernetes performs:
+
+```text
+PVC Created
+      ↓
+StorageClass Found
+      ↓
+CSI Driver Called
+      ↓
+10Gi SSD Disk Created
+      ↓
+PV Automatically Created
+      ↓
+PVC Bound To PV
+```
+
+No manual PV creation is required.
+
+---
+
+# Verify Resources
+
+```bash
+# Check PVC
+kubectl get pvc
+
+# Check automatically created PV
+kubectl get pv
+```
+
+Example:
+
+```text
+NAME     STATUS   VOLUME
+sc-pvc   Bound    pvc-123abc
+```
+
+---
+
+# Create Pod Using PVC
+
+Create file:
+
+```bash
+# Create Pod YAML
+vim pod-pvc.yml
+```
+
+## Pod YAML
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  # Pod name
+  name: pod-pvc
+
+spec:
+  containers:
+
+    - image: nginx
+
+      # Container name
+      name: c1
+
+      volumeMounts:
+
+        # Mount storage inside container
+        - mountPath: "/data"
+
+          # Volume reference
+          name: my-volume
+
+  volumes:
+
+    - name: my-volume
+
+      persistentVolumeClaim:
+
+        # PVC used by Pod
+        claimName: sc-pvc
+```
+
+---
+
+# Storage Flow Inside Pod
+
+```text
+Google SSD Disk
+       ↓
+Persistent Volume
+       ↓
+Persistent Volume Claim
+       ↓
+Pod
+       ↓
+/data
+```
+
+---
+
+# Benefits of Dynamic Provisioning
+
+## No Manual PV Creation
+
+Administrator does not need to create PVs manually.
+
+---
+
+## Faster Provisioning
+
+Storage is created automatically when needed.
+
+---
+
+## Cloud Integration
+
+Works with:
+
+- GCP
+- AWS
+- Azure
+
+---
+
+## Better Scalability
+
+Suitable for production clusters.
+
+---
+
+# Static vs Dynamic Provisioning
+```
+| Feature | Static Provisioning | Dynamic Provisioning |
+|----------|----------|----------|
+| PV Creation | Manual | Automatic |
+| PVC Creation | Manual | Manual |
+| Storage Creation | Manual | Automatic |
+| Cloud Integration | Limited | Excellent |
+| Administration Effort | High | Low |
+```
+---
+
+# Complete Architecture
+
+```text
+StorageClass
+      ↓
+CSI Driver
+      ↓
+Cloud Storage (10Gi SSD)
+      ↓
+Persistent Volume (Auto Created)
+      ↓
+Persistent Volume Claim
+      ↓
+Pod
+      ↓
+Container Path (/data)
+```
+
+---
+
+# Summary
+
+Dynamic Provisioning allows Kubernetes to:
+
+- Automatically create cloud storage
+- Automatically create PVs
+- Bind PV to PVC
+- Mount storage into Pods
+
+Key Components:
+
+1. StorageClass
+2. CSI Driver
+3. Cloud Storage
+4. Persistent Volume
+5. Persistent Volume Claim
+6. Pod
+
+This is the preferred storage approach in production Kubernetes clusters.
