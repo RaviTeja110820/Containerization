@@ -7349,3 +7349,313 @@ Key Components:
 6. Pod
 
 This is the preferred storage approach in production Kubernetes clusters.
+
+
+
+# Kubernetes ConfigMaps and Secrets
+
+## ConfigMaps
+
+### What is a ConfigMap?
+
+A ConfigMap is a Kubernetes API object used to store non-confidential configuration data in key-value format.
+
+ConfigMaps help separate application configuration from container images.
+
+Benefits:
+
+- Same image can be used in multiple environments
+- No image rebuild required for config changes
+- Easy application portability
+
+---
+
+## ConfigMap Architecture
+
+```text
+Properties File
+      ↓
+ConfigMap
+      ↓
+Pod
+      ↓
+Mounted as File / Environment Variable
+```
+
+---
+
+## Create Development Properties File
+
+```bash
+# Create development properties file
+vim dev.properties
+```
+
+```properties
+app.env=dev
+app.mem=2048
+app.url=dev.com
+```
+
+---
+
+## Create Production Properties File
+
+```bash
+# Create production properties file
+vim prod.properties
+```
+
+```properties
+app.env=prod
+app.mem=4048
+app.url=prod.com
+```
+
+---
+
+## Create ConfigMaps
+
+```bash
+# Create dev ConfigMap
+kubectl create configmap dev-config --from-file=dev.properties
+
+# Create prod ConfigMap
+kubectl create configmap prod-config --from-file=prod.properties
+```
+
+---
+
+## Dev Pod YAML
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  # Pod name
+  name: dev-pod
+
+spec:
+  containers:
+    - name: c1
+
+      # NGINX image
+      image: nginx
+
+      volumeMounts:
+
+        # Mount ConfigMap
+        - name: config-volume
+
+          # Directory inside container
+          mountPath: /etc/config
+
+  volumes:
+    - name: config-volume
+
+      configMap:
+
+        # ConfigMap name
+        name: dev-config
+```
+
+---
+
+## Prod Pod YAML
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  # Pod name
+  name: prod-pod
+
+spec:
+  containers:
+    - name: c1
+
+      # NGINX image
+      image: nginx
+
+      volumeMounts:
+
+        # Mount ConfigMap
+        - name: config-volume
+
+          # Directory inside container
+          mountPath: /etc/config
+
+  volumes:
+    - name: config-volume
+
+      configMap:
+
+        # ConfigMap name
+        name: prod-config
+```
+
+---
+
+## Verify ConfigMap Inside Pod
+
+```bash
+# Login to pod
+kubectl exec -it dev-pod -- bash
+
+# Go to mounted directory
+cd /etc/config
+
+# View files
+ls
+```
+
+---
+
+## Update Existing ConfigMap
+
+```bash
+# Edit ConfigMap
+kubectl edit configmap dev-config -o yaml
+```
+
+After saving changes:
+
+```bash
+kubectl exec -it dev-pod -- bash
+cd /etc/config
+cat dev.properties
+```
+
+Updated values will be visible.
+
+---
+
+# Secrets
+
+## What is a Secret?
+
+A Secret stores sensitive information such as:
+
+- Passwords
+- Tokens
+- API Keys
+- Certificates
+
+Secrets are similar to ConfigMaps but intended for confidential data.
+
+---
+
+## Why Use Secrets?
+
+Avoid storing passwords inside:
+
+- Source code
+- Container images
+- Deployment YAML
+
+Store them in Secrets instead.
+
+---
+
+## ConfigMap vs Secret
+```
+| Feature | ConfigMap | Secret |
+|----------|------------|---------|
+| Purpose | Configuration | Sensitive Data |
+| Example | URLs, App Settings | Passwords, Tokens |
+| Security | Not Secure | More Secure |
+```
+---
+
+## Secret YAML
+
+```yaml
+apiVersion: v1
+kind: Secret
+
+metadata:
+  # Secret name
+  name: mysql-pwd
+
+data:
+
+  # Base64 encoded password
+  password: "cGFzc3dvcmQ="
+```
+
+---
+
+## Decode Secret Value
+
+```bash
+echo cGFzc3dvcmQ= | base64 -d
+```
+
+Output:
+
+```text
+password
+```
+
+---
+
+## Create Secret
+
+```bash
+# Create Secret
+kubectl create -f secrets.yml
+```
+
+---
+
+## Verify Secret
+
+```bash
+# View Secrets
+kubectl get secret
+
+# Describe Secret
+kubectl describe secret mysql-pwd
+```
+
+---
+
+## Secret Architecture
+
+```text
+Password
+    ↓
+Base64 Encoding
+    ↓
+Secret
+    ↓
+Pod
+    ↓
+Application
+```
+
+---
+
+# Summary
+
+## ConfigMap
+
+Used for:
+
+- URLs
+- Environment settings
+- Application configuration
+
+Not suitable for sensitive data.
+
+## Secret
+
+Used for:
+
+- Passwords
+- Tokens
+- API Keys
+
+Recommended for confidential information.
