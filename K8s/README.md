@@ -8922,3 +8922,705 @@ This project combines:
 - NodePort Service
 
 It is one of the most common end-to-end Kubernetes storage projects used in training and interviews.
+
+
+
+
+# Kubernetes Scheduling - Detailed Notes
+
+## What is Scheduling?
+
+Scheduling is the process of deciding which node should run a Pod.
+
+When a Pod is created:
+
+1. API Server receives request
+2. Scheduler finds a suitable node
+3. Pod is assigned to node
+4. Kubelet creates the Pod
+
+---
+
+# Scheduling Flow
+
+```text
+Pod Created
+      |
+      v
+API Server
+      |
+      v
+Scheduler
+      |
+      v
+Choose Best Node
+      |
+      v
+Pod Running
+```
+
+---
+
+# Methods of Scheduling
+
+1. NodeName
+2. NodeSelector
+3. Taints and Tolerations
+4. Node Affinity
+5. Pod Affinity
+6. Pod Anti-Affinity
+
+This document focuses on:
+
+- NodeName
+- NodeSelector
+- Taints and Tolerations
+
+---
+
+# 1. NodeName
+
+## Concept
+
+NodeName directly assigns a Pod to a specific node.
+
+Scheduler is bypassed.
+
+Kubernetes places Pod directly on the mentioned node.
+
+---
+
+## Diagram
+
+```text
+Pod
+ |
+ | nodeName=node-1
+ |
+ v
+
++-----------+
+|  Node-1   |
++-----------+
+```
+
+---
+
+## Use Cases
+
+- Testing
+- Lab environments
+- Special hardware
+- GPU nodes
+
+---
+
+## NodeName YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: kubeserve
+
+spec:
+
+  # Create 2 replicas
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: kubeserve
+
+  template:
+
+    metadata:
+      labels:
+        app: kubeserve
+
+    spec:
+
+      # Force pod scheduling on this node
+      nodeName: gke-cluster-1-default-pool-e18bdb3b-3h5s
+
+      containers:
+
+      - name: app
+
+        # Application image
+        image: leaddevops/kubeserve:v1
+```
+
+---
+
+## Verify Pod Placement
+
+```bash
+# Check pod node assignment
+kubectl get pods -o wide
+```
+
+---
+
+## Disadvantages
+
+- Not flexible
+- Node failure causes issues
+- Not suitable for large clusters
+
+---
+
+# 2. NodeSelector
+
+## Concept
+
+NodeSelector schedules Pods using labels.
+
+Instead of choosing exact node:
+
+```text
+Choose any node matching label
+```
+
+---
+
+# Step 1: Add Labels
+
+```bash
+# HDD Node
+kubectl label node node1 disk=hdd
+
+# HDD Node
+kubectl label node node3 disk=hdd
+
+# SSD Node
+kubectl label node node2 disk=ssd
+```
+
+---
+
+# Verify Labels
+
+```bash
+kubectl get nodes --show-labels
+```
+
+---
+
+# NodeSelector Architecture
+
+```text
+                Cluster
+
++----------------------+
+| Node-1               |
+| disk=hdd             |
++----------------------+
+
++----------------------+
+| Node-2               |
+| disk=ssd             |
++----------------------+
+
++----------------------+
+| Node-3               |
+| disk=hdd             |
++----------------------+
+
+         Pod
+          |
+          | disk=ssd
+          |
+          v
+
+      Node-2
+```
+
+---
+
+# NodeSelector YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: kubeserve
+
+spec:
+
+  # Create 3 replicas
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app: kubeserve
+
+  template:
+
+    metadata:
+      labels:
+        app: kubeserve
+
+    spec:
+
+      nodeSelector:
+
+        # Run only on SSD nodes
+        disk: ssd
+
+      containers:
+
+      - name: app
+
+        # Application image
+        image: leaddevops/kubeserve:v1
+```
+
+---
+
+# If No Matching Node Exists
+
+Example:
+
+```text
+Node1 -> disk=hdd
+Node2 -> disk=hdd
+Node3 -> disk=hdd
+```
+
+Pod:
+
+```yaml
+nodeSelector:
+  disk: ssd
+```
+
+Result:
+
+```text
+Pod Status = Pending
+```
+
+---
+
+# 3. Taints and Tolerations
+
+## Concept
+
+NodeSelector attracts Pods.
+
+Taints repel Pods.
+
+Think:
+
+```text
+NodeSelector = Attraction
+
+Taint = Rejection
+```
+
+---
+
+# Real World Example
+
+Production Node:
+
+```text
+Only Production Pods Allowed
+```
+
+Prevent other Pods from running.
+
+Use Taint.
+
+---
+
+# Taint Syntax
+
+```bash
+kubectl taint node node1 env=prod:NoSchedule
+```
+
+Format:
+
+```text
+key=value:effect
+```
+
+Example:
+
+```text
+env=prod:NoSchedule
+```
+
+---
+
+# Taint Diagram
+
+```text
++------------------------+
+| Node-1                 |
+| env=prod:NoSchedule    |
++------------------------+
+
+      Rejects Pods
+```
+
+---
+
+# What Happens?
+
+Without toleration:
+
+```text
+Pod
+ |
+ v
+
+Rejected
+```
+
+---
+
+# Toleration
+
+Toleration allows Pod to enter tainted node.
+
+Think:
+
+```text
+Taint = Lock
+
+Toleration = Key
+```
+
+---
+
+# Toleration YAML
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  # Pod name
+  name: nginx
+
+spec:
+
+  tolerations:
+
+  - key: "env"
+
+    operator: "Equal"
+
+    value: "prod"
+
+    effect: "NoSchedule"
+
+  containers:
+
+  - name: nginx
+
+    image: nginx
+```
+
+---
+
+# Taint + Toleration Diagram
+
+```text
+              Taint
+
++------------------------+
+| Node-1                 |
+| env=prod:NoSchedule    |
++------------------------+
+
+            ▲
+            │
+            │ Allowed
+            │
+            │
+
++------------------------+
+| Pod                    |
+| Toleration Exists      |
++------------------------+
+```
+
+---
+
+# Taint Effects
+
+## 1. NoSchedule
+
+Most common.
+
+Behavior:
+
+- Existing Pods continue running
+- New Pods rejected
+
+Without toleration:
+
+```text
+New Pod -> Rejected
+```
+
+---
+
+## Example
+
+```bash
+kubectl taint node node1 env=prod:NoSchedule
+```
+
+---
+
+## 2. PreferNoSchedule
+
+Soft restriction.
+
+Scheduler tries to avoid node.
+
+But may schedule if required.
+
+```bash
+kubectl taint node node1 env=prod:PreferNoSchedule
+```
+
+---
+
+## Behavior
+
+```text
+Avoid Node
+
+If necessary
+Schedule Pod
+```
+
+---
+
+## 3. NoExecute
+
+Strongest effect.
+
+Behavior:
+
+- Existing Pods removed
+- New Pods rejected
+
+Example:
+
+```bash
+kubectl taint node node1 env=prod:NoExecute
+```
+
+---
+
+# NoExecute Example
+
+Before Taint:
+
+```text
+Node-1
+
+Pod-A
+Pod-B
+Pod-C
+```
+
+Apply:
+
+```bash
+kubectl taint node node1 env=prod:NoExecute
+```
+
+Result:
+
+```text
+Pod-A removed
+Pod-B removed
+Pod-C removed
+```
+
+Unless Pods have toleration.
+
+---
+
+# Remove Taint
+
+```bash
+kubectl taint node node1 env=prod:NoSchedule-
+```
+
+Notice:
+
+```text
+Trailing hyphen (-)
+```
+
+removes taint.
+
+---
+
+# View Taints
+
+```bash
+kubectl describe node node1
+```
+
+---
+
+# NodeSelector vs Taints
+
+| Feature | NodeSelector | Taint |
+|-----------|------------|--------|
+| Purpose | Attract Pods | Reject Pods |
+| Applied On | Pod | Node |
+| Behavior | Select Node | Block Node |
+
+---
+
+# Taint and Toleration Flow
+
+```text
+Pod Created
+      |
+      v
+
+Node Tainted?
+      |
+      +---- No ----> Schedule
+      |
+      +---- Yes
+               |
+               v
+
+Has Toleration?
+      |
+      +---- No ----> Rejected
+      |
+      +---- Yes ---> Schedule
+```
+
+---
+
+# Scheduling Summary
+
+## NodeName
+
+```yaml
+nodeName: node1
+```
+
+Direct scheduling.
+
+---
+
+## NodeSelector
+
+```yaml
+nodeSelector:
+  disk: ssd
+```
+
+Label based scheduling.
+
+---
+
+## Taint
+
+```bash
+kubectl taint node node1 env=prod:NoSchedule
+```
+
+Reject Pods.
+
+---
+
+## Toleration
+
+```yaml
+tolerations:
+- key: env
+  value: prod
+  effect: NoSchedule
+```
+
+Allows Pod.
+
+---
+
+# Interview Questions
+
+## Q1: Difference between NodeName and NodeSelector?
+
+NodeName selects exact node.
+
+NodeSelector selects nodes using labels.
+
+---
+
+## Q2: Difference between NodeSelector and Taints?
+
+NodeSelector attracts Pods.
+
+Taints repel Pods.
+
+---
+
+## Q3: What are NoSchedule, PreferNoSchedule and NoExecute?
+
+NoSchedule:
+Reject new Pods.
+
+PreferNoSchedule:
+Avoid scheduling.
+
+NoExecute:
+Remove existing Pods and reject new Pods.
+
+---
+
+## Q4: How to remove taint?
+
+```bash
+kubectl taint node node1 env=prod:NoSchedule-
+```
+
+---
+
+# Final Diagram
+
+```text
+                    Scheduling
+
+                         |
+        ---------------------------------
+        |               |              |
+        v               v              v
+
+    NodeName      NodeSelector     Taints
+
+        |               |              |
+        v               v              v
+
+ Specific Node    Label Match     Reject Pods
+
+                                        |
+                                        v
+
+                                  Toleration
+
+                                        |
+                                        v
+
+                                   Allow Pod
+```
