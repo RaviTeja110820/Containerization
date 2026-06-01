@@ -7659,3 +7659,1266 @@ Used for:
 - API Keys
 
 Recommended for confidential information.
+
+
+# Kubernetes Mini Project , Deployment + Service + ConfigMap + Secret , WordPress + MySQL Application
+
+---
+
+## Project Overview
+
+In this project we deploy:
+
+1. MySQL Database
+2. WordPress Application
+3. ConfigMap
+4. Secret
+5. ClusterIP Service
+6. NodePort Service
+
+The goal is to understand how ConfigMaps and Secrets are used inside Deployments.
+
+---
+
+## Real World Scenario
+
+Suppose we have a WordPress application.
+
+WordPress needs:
+
+- Database Host
+- Database Username
+- Database Password
+- Database Name
+
+Instead of hardcoding values:
+
+- Store non-sensitive data in ConfigMap
+- Store sensitive data in Secret
+
+This follows Kubernetes best practices.
+
+---
+
+## Architecture Diagram
+
+```text
+                    +-------------------------+
+                    |        Browser          |
+                    +------------+------------+
+                                 |
+                                 |
+                                 v
+                    +-------------------------+
+                    |    WordPress Service    |
+                    |       NodePort          |
+                    +------------+------------+
+                                 |
+                                 |
+                                 v
+                    +-------------------------+
+                    | WordPress Deployment    |
+                    +-------------------------+
+                    | DB Host -> ConfigMap    |
+                    | DB User -> ConfigMap    |
+                    | DB Pass -> Secret       |
+                    +------------+------------+
+                                 |
+                                 |
+                                 v
+                    +-------------------------+
+                    |   MySQL Service         |
+                    |      ClusterIP          |
+                    +------------+------------+
+                                 |
+                                 |
+                                 v
+                    +-------------------------+
+                    |   MySQL Deployment      |
+                    +-------------------------+
+                    | DB Name -> ConfigMap    |
+                    | RootPwd -> Secret       |
+                    +-------------------------+
+```
+
+---
+
+## How Data Flows
+
+```text
+ConfigMap
+   |
+   +---- MYSQL_DATABASE
+   +---- WORDPRESS_DB_HOST
+   +---- WORDPRESS_DB_USER
+   |
+   v
+
+Secret
+   |
+   +---- MYSQL PASSWORD
+   |
+   v
+
+MySQL Deployment
+   |
+   v
+
+WordPress Deployment
+   |
+   v
+
+Browser Access
+```
+
+---
+
+## Step 1: Create Secret
+
+Secret stores sensitive data.
+
+Example:
+
+- Database password
+- API keys
+- Tokens
+
+Create file:
+
+```bash
+# Create secret YAML
+vim secrets.yml
+```
+
+---
+
+### Secret YAML
+
+```yaml
+apiVersion: v1
+kind: Secret
+
+metadata:
+  # Secret name
+  name: mysql-pwd
+
+data:
+
+  # Base64 encoded password
+  password: "cGFzc3dvcmQ="
+```
+
+---
+
+### Decode Password
+
+```bash
+echo cGFzc3dvcmQ= | base64 -d
+```
+
+Output:
+
+```text
+password
+```
+
+---
+
+### Create Secret
+
+```bash
+# Create secret
+kubectl create -f secrets.yml
+```
+
+---
+
+### Verify Secret
+
+```bash
+# View secrets
+kubectl get secrets
+
+# Describe secret
+kubectl describe secret mysql-pwd
+```
+
+---
+
+## Step 2: Create ConfigMap
+
+ConfigMap stores:
+
+- Database name
+- Database host
+- Database username
+
+Create file:
+
+```bash
+# Create ConfigMap YAML
+vim config-mysql.yml
+```
+
+---
+
+## ConfigMap YAML
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+
+metadata:
+  # ConfigMap name
+  name: mysql-config
+
+data:
+
+  # Database name
+  MYSQL_DATABASE: wordpress
+
+  # Database username
+  WORDPRESS_DB_USER: root
+
+  # Database host
+  WORDPRESS_DB_HOST: mysql
+```
+
+---
+
+### Create ConfigMap
+
+```bash
+# Create ConfigMap
+kubectl create -f config-mysql.yml
+```
+
+---
+
+### Verify ConfigMap
+
+```bash
+kubectl get configmap
+
+kubectl describe configmap mysql-config
+```
+
+---
+
+## Step 3: Deploy MySQL
+
+Create file:
+
+```bash
+# Create MySQL deployment YAML
+vim deploy-mysql.yml
+```
+
+---
+
+### MySQL Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: mysql
+
+spec:
+
+  # Number of replicas
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: mysql-wordpress
+
+  template:
+    metadata:
+      labels:
+        app: mysql-wordpress
+        product: mysql
+
+    spec:
+      containers:
+
+        - name: mysql-container
+
+          # MySQL image
+          image: mysql
+
+          env:
+
+            # Root password from Secret
+            - name: MYSQL_ROOT_PASSWORD
+
+              valueFrom:
+                secretKeyRef:
+
+                  # Secret name
+                  name: mysql-pwd
+
+                  # Secret key
+                  key: password
+
+            # Database name from ConfigMap
+            - name: MYSQL_DATABASE
+
+              valueFrom:
+                configMapKeyRef:
+
+                  # ConfigMap name
+                  name: mysql-config
+
+                  # ConfigMap key
+                  key: MYSQL_DATABASE
+
+---
+
+apiVersion: v1
+kind: Service
+
+metadata:
+  # MySQL service name
+  name: mysql
+
+spec:
+
+  # Internal service
+  type: ClusterIP
+
+  ports:
+
+    - targetPort: 3306
+
+      # Service port
+      port: 3306
+
+  selector:
+    app: mysql-wordpress
+    product: mysql
+```
+
+---
+
+### Create MySQL Deployment
+
+```bash
+kubectl create -f deploy-mysql.yml
+```
+
+---
+
+### MySQL Environment Variables
+
+MySQL receives:
+
+```text
+MYSQL_ROOT_PASSWORD -> Secret
+MYSQL_DATABASE      -> ConfigMap
+```
+
+---
+
+## Step 4: Deploy WordPress
+
+Create file:
+
+```bash
+# Create WordPress deployment YAML
+vim deploy-wordpress.yml
+```
+
+---
+
+### WordPress Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: wordpress
+
+spec:
+
+  # Number of replicas
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: mysql-wordpress
+      tier: frontend
+
+  template:
+    metadata:
+      labels:
+        app: mysql-wordpress
+        tier: frontend
+
+    spec:
+      containers:
+
+        - name: wordpress-container
+
+          # WordPress image
+          image: wordpress
+
+          env:
+
+            # Database host from ConfigMap
+            - name: WORDPRESS_DB_HOST
+
+              valueFrom:
+                configMapKeyRef:
+                  name: mysql-config
+                  key: WORDPRESS_DB_HOST
+
+            # Database user from ConfigMap
+            - name: WORDPRESS_DB_USER
+
+              valueFrom:
+                configMapKeyRef:
+                  name: mysql-config
+                  key: WORDPRESS_DB_USER
+
+            # Database password from Secret
+            - name: WORDPRESS_DB_PASSWORD
+
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-pwd
+                  key: password
+
+---
+
+apiVersion: v1
+kind: Service
+
+metadata:
+  # WordPress service name
+  name: wordpress
+
+spec:
+
+  # Expose application externally
+  type: NodePort
+
+  ports:
+
+    - targetPort: 80
+
+      # Service port
+      port: 80
+
+  selector:
+    app: mysql-wordpress
+    tier: frontend
+```
+
+---
+
+### Create WordPress Deployment
+
+```bash
+kubectl create -f deploy-wordpress.yml
+```
+
+---
+
+### WordPress Environment Variables
+
+WordPress receives:
+
+```text
+WORDPRESS_DB_HOST     -> ConfigMap
+WORDPRESS_DB_USER     -> ConfigMap
+WORDPRESS_DB_PASSWORD -> Secret
+```
+
+---
+
+## Verify Resources
+
+```bash
+kubectl get all
+```
+
+Expected Output:
+
+```text
+MySQL Pod
+
+MySQL Service
+
+WordPress Pod
+
+WordPress Service
+```
+
+---
+
+## Check Pods
+
+```bash
+kubectl get pods
+```
+
+---
+
+## Check Services
+
+```bash
+kubectl get svc
+```
+
+Example:
+
+```text
+NAME        TYPE        PORT(S)
+mysql       ClusterIP   3306/TCP
+wordpress   NodePort    80:32080/TCP
+```
+
+---
+
+## Access WordPress
+
+Open browser:
+
+```text
+http://<Node-IP>:<NodePort>
+```
+
+Example:
+
+```text
+http://192.168.1.10:32080
+```
+
+---
+
+## Verify Environment Variables
+
+MySQL:
+
+```bash
+kubectl exec -it <mysql-pod> -- env
+```
+
+WordPress:
+
+```bash
+kubectl exec -it <wordpress-pod> -- env
+```
+
+---
+
+## Interview Question
+
+Q. Why not store password in ConfigMap?
+
+Answer:
+
+ConfigMap is not secure.
+
+Secrets should be used for:
+
+- Passwords
+- Tokens
+- API Keys
+
+---
+
+## ConfigMap vs Secret
+```
+| Feature | ConfigMap | Secret |
+|----------|------------|---------|
+| Purpose | Configuration | Sensitive Data |
+| Security | No | Better |
+| Data Format | Plain Text | Base64 Encoded |
+| Example | URLs, Hostnames | Passwords, Tokens |
+```
+---
+
+## Troubleshooting
+
+### MySQL Pod CrashLoopBackOff
+
+Check:
+
+```bash
+kubectl logs <mysql-pod>
+```
+
+Possible reason:
+
+Wrong password format.
+
+---
+
+## WordPress Cannot Connect To DB
+
+Check:
+
+```bash
+kubectl describe pod <wordpress-pod>
+```
+
+Verify:
+
+```text
+WORDPRESS_DB_HOST
+WORDPRESS_DB_USER
+WORDPRESS_DB_PASSWORD
+```
+
+---
+
+## Service Not Accessible
+
+Check:
+
+```bash
+kubectl get svc
+```
+
+Verify NodePort assigned.
+
+---
+
+## Complete Flow
+
+```text
+Secret
+   |
+   +---- Database Password
+   |
+   v
+
+ConfigMap
+   |
+   +---- Database Name
+   +---- Database Host
+   +---- Database User
+   |
+   v
+
+MySQL Deployment
+   |
+   +---- ClusterIP Service
+   |
+   v
+
+WordPress Deployment
+   |
+   +---- NodePort Service
+   |
+   v
+
+Browser
+```
+
+---
+
+## Summary
+
+This project demonstrates:
+
+- Secret Creation
+- ConfigMap Creation
+- MySQL Deployment
+- MySQL ClusterIP Service
+- WordPress Deployment
+- WordPress NodePort Service
+- Environment Variables from ConfigMap
+- Environment Variables from Secret
+
+This is one of the most common Kubernetes interview and production-level examples.
+
+
+# Kubernetes Mini Project
+# NFS Storage + PV + PVC + Deployments + Services + Secrets + ConfigMaps
+
+## Architecture Diagram (Based on Provided Image)
+
+![Cluster](images/kuberenets-cluster.jpg)
+
+
+```text
++------------------------------------------------------------------+
+|                    KUBERNETES CLUSTER                            |
+|                                                                  |
+|  MASTER NODE                                 WORKER NODE         |
+|  -----------                                 -----------         |
+|                                                                  |
+|  [1] NFS Server (/data)  ----------------->  NFS Client          |
+|                                                                  |
+|  [2] NFS Persistent Volume                                       |
+|          |                                                       |
+|          v                                                       |
+|  [4] PVC (NFS)                                                   |
+|          |                                                       |
+|          v                                                       |
+|  [6] MySQL Deployment --------------------> /var/lib/mysql       |
+|          |                                                       |
+|  [7] MySQL ClusterIP Service                                     |
+|                                                                  |
+|  [5] Secret                                                      |
+|          |                                                       |
+|          +---- MYSQL Password                                    |
+|                                                                  |
+|  [11] HostPath PV                                                |
+|          |                                                       |
+|  [12] WordPress Deployment -------------> /var/www/html          |
+|          |                                                       |
+|          +---- Uses ConfigMap + Secret                           |
+|          |                                                       |
+|  [13] WordPress NodePort Service                                 |
+|                                                                  |
+|  [16] Browser Access ---> NodePort ---> WordPress                |
++------------------------------------------------------------------+
+```
+
+---
+
+# Project Objective
+
+Deploy:
+
+- NFS Server
+- NFS Client
+- Persistent Volume
+- Persistent Volume Claim
+- MySQL Deployment
+- MySQL Service
+- WordPress Deployment
+- WordPress Service
+- ConfigMap
+- Secret
+
+---
+
+# Step 1: Configure NFS Server
+
+Create shared directory:
+
+```bash
+# Become root user
+sudo su
+
+# Create shared directory
+mkdir -p /data
+
+# Verify directory
+ls -alrt /data
+```
+
+---
+
+# Install NFS Server
+
+```bash
+# Install NFS server
+sudo apt update
+
+sudo apt install nfs-kernel-server -y
+```
+
+---
+
+# Configure Permissions
+
+```bash
+# Change ownership
+sudo chown nobody:nogroup /data
+
+# Give full permissions
+sudo chmod 777 /data
+```
+
+---
+
+# Configure NFS Export
+
+Edit exports file:
+
+```bash
+sudo vi /etc/exports
+```
+
+Add:
+
+```text
+/data *(rw,sync,no_root_squash)
+```
+
+Explanation:
+
+- rw = Read Write
+- sync = Write changes immediately
+- no_root_squash = Allow root access from clients
+
+---
+
+# Apply Export Configuration
+
+```bash
+# Export shared directories
+sudo exportfs -rv
+```
+
+---
+
+# Restart NFS Server
+
+```bash
+sudo systemctl restart nfs-kernel-server
+```
+
+---
+
+# Step 2: Install NFS Client on Worker Node
+
+```bash
+# Install NFS client package
+sudo apt install nfs-common -y
+```
+
+---
+
+# NFS Flow
+
+```text
+NFS Server
+    |
+    +---- /data
+    |
+    v
+Worker Node
+    |
+    v
+Pods Access Shared Storage
+```
+
+---
+
+# Step 3: Create Secret
+
+```yaml
+apiVersion: v1
+kind: Secret
+
+metadata:
+  # Secret name
+  name: mysql-secret
+
+data:
+  # Base64 encoded password
+  password: cGFzc3dvcmQ=
+```
+
+---
+
+# Step 4: Create ConfigMap
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+
+metadata:
+  # ConfigMap name
+  name: mysql-config
+
+data:
+  # Database name
+  MYSQL_DATABASE: wordpress
+
+  # Database host
+  WORDPRESS_DB_HOST: mysql
+
+  # Database user
+  WORDPRESS_DB_USER: root
+```
+
+---
+
+# Step 5: NFS Persistent Volume
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+
+metadata:
+  # PV name
+  name: mysql-nfs-pv
+
+spec:
+
+  # Storage capacity
+  capacity:
+    storage: 5Gi
+
+  # Access mode
+  accessModes:
+    - ReadWriteMany
+
+  nfs:
+
+    # NFS shared folder
+    path: /data
+
+    # NFS server IP
+    server: 172.31.58.69
+```
+
+---
+
+# Explanation
+
+ReadWriteMany means:
+
+Multiple pods can access storage simultaneously.
+
+---
+
+# Step 6: NFS PVC
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+
+metadata:
+  # PVC name
+  name: mysql-nfs-pvc
+
+spec:
+
+  accessModes:
+    - ReadWriteMany
+
+  resources:
+    requests:
+
+      # Requested storage
+      storage: 5Gi
+```
+
+---
+
+# PV-PVC Binding
+
+```text
+Persistent Volume
+        |
+        v
+Persistent Volume Claim
+        |
+        v
+MySQL Pod
+```
+
+---
+
+# Step 7: MySQL Deployment
+
+MySQL stores database files inside NFS volume.
+
+```text
+MySQL
+   |
+   v
+/var/lib/mysql
+   |
+   v
+NFS Storage
+```
+
+Environment variables:
+
+```text
+MYSQL_ROOT_PASSWORD -> Secret
+
+MYSQL_DATABASE -> ConfigMap
+```
+
+---
+
+# MySQL Service
+
+```yaml
+apiVersion: v1
+kind: Service
+
+metadata:
+  # Service name
+  name: mysql
+
+spec:
+
+  # Internal service
+  type: ClusterIP
+
+  ports:
+    - port: 3306
+      targetPort: 3306
+
+  selector:
+    app: mysql
+```
+
+---
+
+# Why ClusterIP?
+
+Because:
+
+- Only WordPress needs MySQL access.
+- No external users should access MySQL.
+
+---
+
+# Step 8: WordPress HostPath Storage
+
+HostPath stores WordPress content.
+
+Example:
+
+```text
+/opt/wordpress
+```
+
+on worker node.
+
+---
+
+# HostPath PV
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+
+metadata:
+  # PV name
+  name: wordpress-hostpath-pv
+
+spec:
+
+  capacity:
+    storage: 5Gi
+
+  accessModes:
+    - ReadWriteOnce
+
+  hostPath:
+
+    # Worker node directory
+    path: /opt/wordpress
+```
+
+---
+
+# HostPath PVC
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+
+metadata:
+  # PVC name
+  name: wordpress-pvc
+
+spec:
+
+  accessModes:
+    - ReadWriteOnce
+
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+---
+
+# Step 9: WordPress Deployment
+
+WordPress uses:
+
+ConfigMap:
+
+```text
+WORDPRESS_DB_HOST
+WORDPRESS_DB_USER
+```
+
+Secret:
+
+```text
+WORDPRESS_DB_PASSWORD
+```
+
+PVC:
+
+```text
+/var/www/html
+```
+
+---
+
+# WordPress Service
+
+```yaml
+apiVersion: v1
+kind: Service
+
+metadata:
+  # WordPress service
+  name: wordpress
+
+spec:
+
+  # External access
+  type: NodePort
+
+  ports:
+    - port: 80
+      targetPort: 80
+
+  selector:
+    app: wordpress
+```
+
+---
+
+# Why NodePort?
+
+Allows browser access.
+
+```text
+Browser
+   |
+   v
+NodeIP:NodePort
+   |
+   v
+WordPress
+```
+
+---
+
+# Verification Commands
+
+```bash
+# View all resources
+kubectl get all
+
+# View PVs
+kubectl get pv
+
+# View PVCs
+kubectl get pvc
+
+# View Pods
+kubectl get pods
+
+# View Services
+kubectl get svc
+```
+
+---
+
+# Complete Project Flow
+
+```text
+NFS Server
+    |
+    v
+NFS PV
+    |
+    v
+PVC
+    |
+    v
+MySQL Deployment
+    |
+    +---- Secret (Password)
+    |
+    +---- ConfigMap (DB Name)
+    |
+    v
+MySQL Service (ClusterIP)
+    |
+    v
+WordPress Deployment
+    |
+    +---- Secret (Password)
+    |
+    +---- ConfigMap (Host/User)
+    |
+    +---- HostPath Storage
+    |
+    v
+WordPress Service (NodePort)
+    |
+    v
+Browser Access
+```
+
+---
+
+# Interview Questions
+
+## Why use NFS?
+
+To share storage across multiple nodes.
+
+---
+
+## Why use PVC?
+
+To decouple Pods from storage.
+
+---
+
+## Why use Secret?
+
+To store passwords securely.
+
+---
+
+## Why use ConfigMap?
+
+To store application configuration.
+
+---
+
+## Why ClusterIP for MySQL?
+
+Internal communication only.
+
+---
+
+## Why NodePort for WordPress?
+
+External browser access.
+
+---
+
+# Summary
+
+This project combines:
+
+- NFS Storage
+- Persistent Volumes
+- Persistent Volume Claims
+- ConfigMaps
+- Secrets
+- MySQL Deployment
+- WordPress Deployment
+- ClusterIP Service
+- NodePort Service
+
+It is one of the most common end-to-end Kubernetes storage projects used in training and interviews.
