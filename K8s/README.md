@@ -451,7 +451,7 @@ kubectl → API Server → ETCD → Scheduler → Kubelet → Runtime → Pod
 ---
 
 # 🧠 Key Concepts from Images (Important Points Covered)
-
+```
 ✔ Manager vs Worker (Swarm vs K8s difference)
 ✔ API Server flow and scheduling
 ✔ ETCD stores cluster metadata
@@ -460,7 +460,7 @@ kubectl → API Server → ETCD → Scheduler → Kubelet → Runtime → Pod
 ✔ Replicas handled by controller
 ✔ Pods created across worker nodes
 ✔ Cluster state always maintained
-
+```
 ---
 
 # 🧾 One-Line Summary
@@ -4667,13 +4667,13 @@ Therefore Kubernetes rejects pod creation.
 ---
 
 # Resource Usage Table
-```
-| Limit Type | Per Pod | 2 Pods Total | Quota Limit |
-|---|---|---|---|
-| Requests CPU | 50m | 100m | 250m |
-| Requests Memory | 256Mi | 512Mi | 1Gi |
-| Limits CPU | 100m | 200m | 500m |
-| Limits Memory | 512Mi | 1Gi | 2Gi |
+```text
+| Limit Type      | Per Pod | 2 Pods Total | Quota Limit |
+|-----------------|---------|--------------|-------------|
+| Requests CPU    | 50m     | 100m         | 250m        |
+| Requests Memory | 256Mi   | 512Mi        | 1Gi         |
+| Limits CPU      | 100m    | 200m         | 500m        |
+| Limits Memory   | 512Mi   | 1Gi          | 2Gi         |
 ```
 ---
 
