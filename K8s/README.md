@@ -10216,3 +10216,772 @@ Toleration Exists?
 
 Pod Running
 ```
+
+# Kubernetes Affinity and Anti-Affinity
+
+## Introduction
+
+Kubernetes Scheduler automatically decides where Pods should run.
+
+Sometimes we want more control over scheduling to improve:
+
+* Application Performance
+* High Availability
+* Fault Tolerance
+* Network Latency
+* Resource Utilization
+
+Kubernetes provides **Affinity Rules** for this purpose.
+
+Affinity rules allow Pods to be scheduled based on:
+
+* Node Labels
+* Other Pods
+
+---
+
+# Types of Affinity Rules
+
+There are three main types:
+
+## 1. Node Affinity
+
+Controls which nodes a Pod can run on.
+
+Example:
+
+```text
+Run Pod only on SSD nodes
+```
+
+---
+
+## 2. Pod Affinity
+
+Schedules Pods close to other Pods.
+
+Example:
+
+```text
+Run WordPress on the same node as MySQL
+```
+
+Benefits:
+
+* Faster communication
+* Reduced network latency
+* Better performance
+
+---
+
+## 3. Pod Anti-Affinity
+
+Schedules Pods away from other Pods.
+
+Example:
+
+```text
+Run WordPress on a different node from MySQL
+```
+
+Benefits:
+
+* High availability
+* Better fault tolerance
+
+---
+
+# Node Affinity
+
+Node Affinity works using node labels.
+
+Example:
+
+```bash
+# Add label to node
+kubectl label node node1 disk=ssd
+```
+
+---
+
+# Types of Node Affinity
+
+## 1. Required Node Affinity
+
+Mandatory rule.
+
+If no matching node exists:
+
+```text
+Pod remains Pending
+```
+
+---
+
+## Required Node Affinity YAML
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  # Pod name
+  name: with-node-affinity
+
+spec:
+
+  affinity:
+
+    nodeAffinity:
+
+      # Mandatory scheduling rule
+      requiredDuringSchedulingIgnoredDuringExecution:
+
+        nodeSelectorTerms:
+
+        - matchExpressions:
+
+          - key: disk
+
+            # Label must match
+            operator: In
+
+            values:
+
+            # Pod can run only on SSD nodes
+            - ssd
+
+  containers:
+
+  - name: c1
+
+    # Container image
+    image: nginx
+```
+
+---
+
+# How Required Node Affinity Works
+
+Cluster:
+
+```text
+Node-1 -> disk=ssd
+Node-2 -> disk=hdd
+Node-3 -> disk=hdd
+```
+
+Result:
+
+```text
+Pod
+ |
+ v
+Node-1
+```
+
+Only Node-1 matches.
+
+---
+
+# Required Affinity Diagram
+
+```text
+                 Cluster
+
++-------------------------+
+| Node-1                  |
+| disk=ssd                |
++-------------------------+
+
++-------------------------+
+| Node-2                  |
+| disk=hdd                |
++-------------------------+
+
++-------------------------+
+| Node-3                  |
+| disk=hdd                |
++-------------------------+
+
+         Pod
+          |
+          |
+          v
+
+       Node-1
+```
+
+---
+
+# 2. Preferred Node Affinity
+
+Soft rule.
+
+Scheduler tries to satisfy it.
+
+If not possible:
+
+```text
+Pod will still be scheduled
+```
+
+---
+
+# Preferred Node Affinity YAML
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  # Pod name
+  name: with-node-affinity
+
+spec:
+
+  affinity:
+
+    nodeAffinity:
+
+      preferredDuringSchedulingIgnoredDuringExecution:
+
+      # Low priority preference
+      - weight: 1
+
+        preference:
+
+          matchExpressions:
+
+          - key: disk
+
+            operator: In
+
+            values:
+
+            - ssd
+
+      # High priority preference
+      - weight: 50
+
+        preference:
+
+          matchExpressions:
+
+          - key: disk
+
+            operator: In
+
+            values:
+
+            - hdd
+
+  containers:
+
+  - name: c1
+
+    # Container image
+    image: nginx
+```
+
+---
+
+# Understanding Weights
+
+Weights range:
+
+```text
+1 - 100
+```
+
+Higher weight = Higher preference.
+
+Example:
+
+```text
+disk=hdd weight=50
+
+disk=ssd weight=1
+```
+
+Scheduler prefers:
+
+```text
+HDD Node
+```
+
+because weight is higher.
+
+---
+
+# Preferred Affinity Diagram
+
+```text
+Node-1 -> disk=ssd (weight=1)
+
+Node-2 -> disk=hdd (weight=50)
+
+Node-3 -> disk=hdd (weight=50)
+
+Scheduler Preference:
+
+Node-2 or Node-3
+```
+
+---
+
+# Pod Affinity
+
+## Concept
+
+Pod Affinity schedules Pods together.
+
+Example:
+
+```text
+WordPress should run on the same node as MySQL
+```
+
+Benefits:
+
+* Faster communication
+* Reduced latency
+* Better database performance
+
+---
+
+# Architecture
+
+```text
++------------------------+
+| Node-1                 |
+|                        |
+|  MySQL Pod             |
+|  WordPress Pod         |
+|                        |
++------------------------+
+```
+
+Both Pods are on the same node.
+
+---
+
+# MySQL Deployment
+
+## mysql.yml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: mysql
+
+spec:
+
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: mysql-wordpress
+
+  template:
+
+    metadata:
+      labels:
+        app: mysql-wordpress
+
+        # Used by Pod Affinity
+        product: mysql
+
+    spec:
+
+      containers:
+
+      - name: mysql-container
+
+        # MySQL image
+        image: mysql
+
+        env:
+
+        # Password from Secret
+        - name: MYSQL_ROOT_PASSWORD
+
+          valueFrom:
+            secretKeyRef:
+
+              name: mysql-pwd
+              key: password
+
+        # Database name from ConfigMap
+        - name: MYSQL_DATABASE
+
+          valueFrom:
+            configMapKeyRef:
+
+              name: mysql-config
+              key: MYSQL_DATABASE
+```
+
+---
+
+# WordPress Pod Affinity
+
+## wordpress.yml
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: wordpress
+
+spec:
+
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: mysql-wordpress
+      tier: frontend
+
+  template:
+
+    metadata:
+      labels:
+        app: mysql-wordpress
+        tier: frontend
+
+    spec:
+
+      affinity:
+
+        podAffinity:
+
+          requiredDuringSchedulingIgnoredDuringExecution:
+
+          - labelSelector:
+
+              matchExpressions:
+
+              - key: product
+
+                operator: In
+
+                values:
+
+                # Find MySQL Pods
+                - mysql
+
+            # Same Node
+            topologyKey: kubernetes.io/hostname
+
+      containers:
+
+      - name: wordpress-container
+
+        image: wordpress
+
+        env:
+
+        # DB Host from ConfigMap
+        - name: WORDPRESS_DB_HOST
+
+          valueFrom:
+            configMapKeyRef:
+
+              name: mysql-config
+              key: WORDPRESS_DB_HOST
+
+        # DB User from ConfigMap
+        - name: WORDPRESS_DB_USER
+
+          valueFrom:
+            configMapKeyRef:
+
+              name: mysql-config
+              key: WORDPRESS_DB_USER
+
+        # DB Password from Secret
+        - name: WORDPRESS_DB_PASSWORD
+
+          valueFrom:
+            secretKeyRef:
+
+              name: mysql-pwd
+              key: password
+```
+
+---
+
+# How Pod Affinity Works
+
+Scheduler searches for:
+
+```text
+product=mysql
+```
+
+Then places WordPress Pod on the same node.
+
+---
+
+# Pod Affinity Diagram
+
+```text
++--------------------------+
+| Node-1                   |
+|                          |
+| MySQL Pod                |
+| Label: product=mysql     |
+|                          |
+| WordPress Pod            |
+|                          |
++--------------------------+
+```
+
+---
+
+# topologyKey Explanation
+
+```yaml
+topologyKey: kubernetes.io/hostname
+```
+
+Means:
+
+```text
+Same Node
+```
+
+Other examples:
+
+```text
+topology.kubernetes.io/zone
+```
+
+Means:
+
+```text
+Same Availability Zone
+```
+
+---
+
+# Pod Anti-Affinity
+
+## Concept
+
+Pod Anti-Affinity schedules Pods away from each other.
+
+Example:
+
+```text
+Do not place WordPress on the same node as MySQL
+```
+
+Benefits:
+
+* High Availability
+* Fault Isolation
+* Better Resilience
+
+---
+
+# Pod Anti-Affinity YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: wordpress
+
+spec:
+
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: mysql-wordpress
+      tier: frontend
+
+  template:
+
+    metadata:
+      labels:
+        app: mysql-wordpress
+        tier: frontend
+
+    spec:
+
+      affinity:
+
+        podAntiAffinity:
+
+          requiredDuringSchedulingIgnoredDuringExecution:
+
+          - labelSelector:
+
+              matchExpressions:
+
+              - key: product
+
+                operator: In
+
+                values:
+
+                # Avoid MySQL Pods
+                - mysql
+
+            # Different Node
+            topologyKey: kubernetes.io/hostname
+
+      containers:
+
+      - name: wordpress-container
+
+        image: wordpress
+```
+
+---
+
+# Pod Anti-Affinity Diagram
+
+```text
++----------------------+
+| Node-1               |
+|                      |
+| MySQL Pod            |
++----------------------+
+
++----------------------+
+| Node-2               |
+|                      |
+| WordPress Pod        |
++----------------------+
+```
+
+Pods are separated.
+
+---
+
+# Affinity vs Anti-Affinity
+
+| Feature      | Pod Affinity       | Pod Anti-Affinity  |
+| ------------ | ------------------ | ------------------ |
+| Purpose      | Keep Pods Together | Keep Pods Apart    |
+| Performance  | Better             | Normal             |
+| Availability | Lower              | Higher             |
+| Use Case     | App + Database     | Replica Separation |
+
+---
+
+# Interview Questions
+
+## Q1: Difference between Node Affinity and Pod Affinity?
+
+Node Affinity:
+
+```text
+Pod chooses Node
+```
+
+Pod Affinity:
+
+```text
+Pod chooses another Pod
+```
+
+---
+
+## Q2: Difference between Required and Preferred Affinity?
+
+Required:
+
+```text
+Mandatory
+```
+
+Preferred:
+
+```text
+Best Effort
+```
+
+---
+
+## Q3: What does topologyKey do?
+
+Defines the scheduling boundary.
+
+Example:
+
+```yaml
+topologyKey: kubernetes.io/hostname
+```
+
+Means:
+
+```text
+Node level scheduling
+```
+
+---
+
+# Summary
+
+## Node Affinity
+
+Controls which nodes Pods can run on.
+
+---
+
+## Pod Affinity
+
+Places Pods together.
+
+Example:
+
+```text
+WordPress + MySQL
+```
+
+---
+
+## Pod Anti-Affinity
+
+Places Pods apart.
+
+Example:
+
+```text
+Replica Separation
+```
+
+---
+
+# Final Architecture
+
+```text
+                    Affinity Rules
+
+                          |
+      -----------------------------------------
+      |                  |                    |
+      v                  v                    v
+
+ Node Affinity     Pod Affinity      Pod Anti-Affinity
+
+      |                  |                    |
+
+ Select Node      Place Together       Place Apart
+
+      |                  |                    |
+
+ Performance       Low Latency       High Availability
+```
