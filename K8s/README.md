@@ -9624,3 +9624,595 @@ kubectl taint node node1 env=prod:NoSchedule-
 
                                    Allow Pod
 ```
+
+
+# Kubernetes Taints and Tolerations
+
+## What are Taints and Tolerations?
+
+Taints and Tolerations are Kubernetes scheduling mechanisms used to control which Pods can run on specific Nodes.
+
+Think of them as:
+
+```text
+Taint       = Node repels Pods
+Toleration  = Pod can tolerate the taint
+```
+
+### Real Life Example
+
+Imagine a building:
+
+```text
+Building = Node
+
+Security Guard = Taint
+
+Entry Pass = Toleration
+```
+
+Without a valid pass, nobody can enter the building.
+
+Similarly:
+
+* Taint prevents Pods from being scheduled.
+* Toleration allows specific Pods to be scheduled.
+
+---
+
+# Why Use Taints and Tolerations?
+
+Common use cases:
+
+* Dedicated nodes for production workloads
+* Dedicated nodes for databases
+* GPU nodes
+* Isolating critical applications
+* Preventing unwanted Pods from running on specific nodes
+
+---
+
+# How Taints Work
+
+Apply a taint to a node:
+
+```bash
+# Apply taint to node
+kubectl taint node gke-cluster-1-default-pool-7fe774cd-0m0q color=red:NoSchedule
+```
+
+Format:
+
+```text
+key=value:effect
+```
+
+Example:
+
+```text
+color=red:NoSchedule
+```
+
+Where:
+
+| Component  | Meaning |
+| ---------- | ------- |
+| color      | Key     |
+| red        | Value   |
+| NoSchedule | Effect  |
+
+---
+
+# Taint Architecture
+
+```text
+                    Cluster
+
+      +---------------------------+
+      | Node-1                    |
+      | color=red:NoSchedule      |
+      +---------------------------+
+
+      +---------------------------+
+      | Node-2                    |
+      +---------------------------+
+
+      +---------------------------+
+      | Node-3                    |
+      +---------------------------+
+
+               Pod
+                |
+                |
+                X
+
+     Scheduler Rejects Pod
+```
+
+---
+
+# Verify Taints
+
+```bash
+# View node details
+kubectl describe node gke-cluster-1-default-pool-7fe774cd-0m0q
+```
+
+Look for:
+
+```text
+Taints:
+color=red:NoSchedule
+```
+
+---
+
+# Effect 1: NoSchedule
+
+## Concept
+
+When a node is tainted with NoSchedule:
+
+* Existing Pods continue running
+* New Pods cannot be scheduled
+
+Example:
+
+```bash
+# Apply NoSchedule taint
+kubectl taint node gke-cluster-1-default-pool-7fe774cd-0m0q color=red:NoSchedule
+```
+
+---
+
+## Before Taint
+
+```text
+Node-1
+ ├── Pod-A
+ ├── Pod-B
+
+Node-2
+ ├── Pod-C
+```
+
+---
+
+## After Taint
+
+```text
+Node-1
+ ├── Pod-A
+ ├── Pod-B
+
+Node-2
+ ├── Pod-C
+
+New Pods
+   X
+Rejected
+```
+
+Existing Pods remain.
+
+New Pods are not scheduled.
+
+---
+
+# Remove Taint
+
+```bash
+# Remove taint
+kubectl taint node gke-cluster-1-default-pool-7fe774cd-0m0q color=red:NoSchedule-
+```
+
+Notice:
+
+```text
+Trailing hyphen (-)
+```
+
+removes the taint.
+
+---
+
+# Effect 2: NoExecute
+
+## Concept
+
+NoExecute is stronger than NoSchedule.
+
+When a node is tainted with NoExecute:
+
+* Existing Pods are evicted
+* New Pods are rejected
+
+Example:
+
+```bash
+# Apply NoExecute taint
+kubectl taint node gke-cluster-1-default-pool-7fe774cd-0m0q color=red:NoExecute
+```
+
+---
+
+# Before NoExecute
+
+```text
+Node-1
+ ├── Pod-A
+ ├── Pod-B
+ ├── Pod-C
+```
+
+---
+
+# After NoExecute
+
+```text
+Node-1
+   |
+   X
+Pods Removed
+
+Node-2
+ ├── Pod-A
+ ├── Pod-B
+ ├── Pod-C
+```
+
+Pods are terminated and recreated on other nodes.
+
+---
+
+# Demonstration
+
+Create deployment:
+
+```bash
+# Create deployment
+kubectl create -f deployment.yml
+```
+
+Verify:
+
+```bash
+# Check pods
+kubectl get pods -o wide
+```
+
+Pods should be running across all nodes.
+
+Apply taint:
+
+```bash
+# Apply NoExecute taint
+kubectl taint node gke-cluster-1-default-pool-7fe774cd-0m0q color=red:NoExecute
+```
+
+Observe:
+
+```bash
+# Watch pods
+kubectl get pods -o wide -w
+```
+
+Pods from the tainted node will be terminated and recreated elsewhere.
+
+---
+
+# What is Toleration?
+
+Toleration allows a Pod to run on a tainted node.
+
+Think:
+
+```text
+Taint = Lock
+
+Toleration = Key
+```
+
+Without toleration:
+
+```text
+Pod
+ |
+ X
+Rejected
+```
+
+With toleration:
+
+```text
+Pod
+ |
+ ✓
+Allowed
+```
+
+---
+
+# Step 1: Apply Taint
+
+```bash
+# Taint node
+kubectl taint node gke-cluster-1-default-pool-7fe774cd-0m0q color=red:NoSchedule
+```
+
+---
+
+# Step 2: Create Deployment with Toleration
+
+## Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: kubeserve1
+
+spec:
+
+  # Create 5 replicas
+  replicas: 5
+
+  selector:
+    matchLabels:
+      app: kubeserve
+
+  template:
+
+    metadata:
+      labels:
+        app: kubeserve
+
+    spec:
+
+      tolerations:
+
+        # Tolerate nodes having color=red
+        - key: color
+
+          # Match exact key/value
+          operator: "Equal"
+
+          # Expected value
+          value: "red"
+
+          # Match NoSchedule taint
+          effect: "NoSchedule"
+
+      containers:
+
+      - name: app
+
+        # Application image
+        image: leaddevops/kubeserve:v1
+```
+
+---
+
+# How Toleration Works
+
+Node:
+
+```text
+color=red:NoSchedule
+```
+
+Pod:
+
+```yaml
+tolerations:
+- key: color
+  value: red
+  effect: NoSchedule
+```
+
+Result:
+
+```text
+Pod
+ |
+ ✓
+Scheduled Successfully
+```
+
+---
+
+# Taint and Toleration Matching
+
+Node Taint:
+
+```text
+color=red:NoSchedule
+```
+
+Pod Toleration:
+
+```yaml
+tolerations:
+- key: color
+  value: red
+  effect: NoSchedule
+```
+
+Match occurs:
+
+```text
+key     ✓
+value   ✓
+effect  ✓
+```
+
+Pod is scheduled.
+
+---
+
+# Architecture Diagram
+
+```text
+                    Tainted Node
+
+        +--------------------------------+
+        | Node-1                         |
+        | color=red:NoSchedule           |
+        +--------------------------------+
+                     ▲
+                     │
+                     │
+                     │ Toleration Matches
+                     │
+        +--------------------------------+
+        | Pod                            |
+        | key=color                      |
+        | value=red                      |
+        | effect=NoSchedule              |
+        +--------------------------------+
+
+                 Pod Scheduled
+```
+
+---
+
+# NoSchedule vs NoExecute
+
+| Feature       | NoSchedule       | NoExecute |
+| ------------- | ---------------- | --------- |
+| Existing Pods | Continue Running | Removed   |
+| New Pods      | Rejected         | Rejected  |
+| Severity      | Medium           | High      |
+
+---
+
+# Taints and Tolerations Flow
+
+```text
+Pod Created
+      |
+      v
+
+Node Tainted?
+      |
+      +---- No ----> Schedule Pod
+      |
+      +---- Yes
+                |
+                v
+
+Matching Toleration?
+      |
+      +---- No ----> Reject Pod
+      |
+      +---- Yes ---> Schedule Pod
+```
+
+---
+
+# Important Interview Questions
+
+## Q1: What is a Taint?
+
+A taint is applied to a node to prevent Pods from being scheduled.
+
+Example:
+
+```bash
+kubectl taint node node1 color=red:NoSchedule
+```
+
+---
+
+## Q2: What is a Toleration?
+
+A toleration allows a Pod to run on a tainted node.
+
+---
+
+## Q3: Difference Between NoSchedule and NoExecute?
+
+### NoSchedule
+
+* Existing Pods remain
+* New Pods rejected
+
+### NoExecute
+
+* Existing Pods removed
+* New Pods rejected
+
+---
+
+## Q4: How to Remove a Taint?
+
+```bash
+kubectl taint node node1 color=red:NoSchedule-
+```
+
+---
+
+# Summary
+
+## Taint
+
+Applied on Node.
+
+Example:
+
+```bash
+kubectl taint node node1 color=red:NoSchedule
+```
+
+Purpose:
+
+```text
+Reject Pods
+```
+
+---
+
+## Toleration
+
+Applied on Pod.
+
+Example:
+
+```yaml
+tolerations:
+- key: color
+  value: red
+  effect: NoSchedule
+```
+
+Purpose:
+
+```text
+Allow Pod on Tainted Node
+```
+
+---
+
+# Final Diagram
+
+```text
+Node
+ |
+ | Taint
+ |
+ v
+
+Reject Pods
+      |
+      v
+
+Toleration Exists?
+      |
+      +---- No ----> Reject
+      |
+      +---- Yes ---> Schedule
+
+Pod Running
+```
