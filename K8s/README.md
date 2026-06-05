@@ -10985,3 +10985,1698 @@ Replica Separation
 
  Performance       Low Latency       High Availability
 ```
+
+# Kubernetes Networking, CoreDNS and Network Policies
+
+## Introduction
+
+Kubernetes networking allows Pods and Services to communicate with each other inside the cluster.
+
+Kubernetes provides:
+
+* Service Discovery
+* DNS Resolution
+* Cross Namespace Communication
+* Traffic Control using Network Policies
+
+The major components involved are:
+
+1. CoreDNS
+2. Services
+3. Network Policies
+
+---
+
+# Service Communication Across Namespaces
+
+## Communication Within Same Namespace
+
+When Pods and Services are in the same namespace, communication is simple.
+
+Example:
+
+```text
+Namespace: dev
+
+Service Name: mongodb
+```
+
+A Pod can connect using:
+
+```text
+mongodb
+```
+
+No namespace specification is required.
+
+---
+
+## Communication Across Different Namespaces
+
+Suppose:
+
+```text
+Namespace: prod
+Service: mongodb
+```
+
+A Pod exists in:
+
+```text
+Namespace: dev
+```
+
+Using:
+
+```text
+mongodb
+```
+
+will fail because Kubernetes searches only within the current namespace.
+
+Instead use:
+
+```text
+mongodb.prod
+```
+
+or Fully Qualified Domain Name (FQDN):
+
+```text
+mongodb.prod.svc.cluster.local
+```
+
+---
+
+## Cross Namespace Communication Diagram
+
+```text
++----------------------+
+| Namespace: dev       |
+|                      |
+| Spring Boot Pod      |
++----------+-----------+
+           |
+           |
+           v
+mongodb.prod.svc.cluster.local
+           |
+           v
++----------------------+
+| Namespace: prod      |
+|                      |
+| MongoDB Service      |
++----------------------+
+```
+
+---
+
+# CoreDNS
+
+## What is CoreDNS?
+
+CoreDNS is Kubernetes' built-in DNS server.
+
+It automatically creates DNS records for:
+
+* Services
+* Pods
+
+This allows communication using names instead of IP addresses.
+
+---
+
+## Why CoreDNS?
+
+Without DNS:
+
+```text
+Application
+     |
+     v
+10.96.25.18
+```
+
+IP address may change.
+
+With CoreDNS:
+
+```text
+Application
+     |
+     v
+mongodb
+```
+
+Service name remains constant.
+
+---
+
+## CoreDNS Architecture
+
+```text
+                 CoreDNS
+
+                     |
+      ---------------------------------
+      |                               |
+      v                               v
+
+ Service DNS                    Pod DNS
+
+ mongodb.default            pod-ip.default
+ svc.cluster.local          pod.cluster.local
+```
+
+---
+
+# How CoreDNS Works
+
+When a Service is created:
+
+```yaml
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: mongodb
+```
+
+CoreDNS automatically creates:
+
+```text
+mongodb.default.svc.cluster.local
+```
+
+---
+
+# DNS Configuration Inside Pods
+
+Every Pod contains:
+
+```bash
+cat /etc/resolv.conf
+```
+
+Example:
+
+```text
+search default.svc.cluster.local
+search svc.cluster.local
+search cluster.local
+```
+
+These search entries are automatically configured by Kubelet.
+
+---
+
+## Why Search Domains Matter
+
+Suppose Service:
+
+```text
+mongodb
+```
+
+Namespace:
+
+```text
+default
+```
+
+Pod can simply use:
+
+```text
+mongodb
+```
+
+because Kubernetes automatically expands it to:
+
+```text
+mongodb.default.svc.cluster.local
+```
+
+---
+
+# DNS Records
+
+## Objects That Get DNS Records
+
+Kubernetes creates DNS records for:
+
+1. Services
+2. Pods
+
+---
+
+## Service DNS Records
+
+Format:
+
+```text
+service-name.namespace.svc.cluster.local
+```
+
+Example:
+
+```text
+mongodb.default.svc.cluster.local
+```
+
+This resolves to:
+
+```text
+Cluster IP
+```
+
+Example:
+
+```text
+10.96.25.18
+```
+
+---
+
+## Pod DNS Records
+
+Format:
+
+```text
+pod-ip.namespace.pod.cluster.local
+```
+
+Example:
+
+```text
+172-17-0-3.default.pod.cluster.local
+```
+
+IP:
+
+```text
+172.17.0.3
+```
+
+becomes:
+
+```text
+172-17-0-3
+```
+
+---
+
+# Pod Hostname and Subdomain
+
+## Default Hostname
+
+By default:
+
+```text
+Hostname = metadata.name
+```
+
+Example:
+
+```yaml
+metadata:
+  name: nginx-pod
+```
+
+Hostname:
+
+```text
+nginx-pod
+```
+
+---
+
+## Custom Hostname
+
+You can override hostname.
+
+Example:
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  name: nginx-pod
+
+spec:
+
+  # Custom hostname
+  hostname: my-host
+
+  containers:
+  - name: nginx
+    image: nginx
+```
+
+Hostname becomes:
+
+```text
+my-host
+```
+
+---
+
+## Subdomain
+
+Subdomain groups Pods together.
+
+Example:
+
+```yaml
+apiVersion: v1
+kind: Pod
+
+metadata:
+  name: nginx-pod
+
+spec:
+
+  # Custom hostname
+  hostname: foo
+
+  # Subdomain
+  subdomain: bar
+
+  containers:
+  - name: nginx
+    image: nginx
+```
+
+---
+
+## Generated FQDN
+
+Namespace:
+
+```text
+my-namespace
+```
+
+Hostname:
+
+```text
+foo
+```
+
+Subdomain:
+
+```text
+bar
+```
+
+Generated FQDN:
+
+```text
+foo.bar.my-namespace.svc.cluster.local
+```
+
+---
+
+# Network Policies
+
+## What are Network Policies?
+
+Network Policies control network traffic between Pods.
+
+They act like firewall rules for Kubernetes Pods.
+
+By default:
+
+```text
+All Pods Can Communicate
+```
+
+Network Policies allow:
+
+* Deny Traffic
+* Allow Traffic
+* Restrict Communication
+
+---
+
+# Why Use Network Policies?
+
+Example:
+
+```text
+Spring Boot Application
+        |
+        |
+        v
+MongoDB
+```
+
+Only Spring Boot should access MongoDB.
+
+Other Pods should not.
+
+Network Policies make this possible.
+
+---
+
+# Network Policy Architecture
+
+```text
+                 Cluster
+
+     +--------------------------+
+     | Spring Boot Pod          |
+     +------------+-------------+
+                  |
+                  | Allowed
+                  |
+                  v
+
+     +--------------------------+
+     | MongoDB Pod              |
+     +--------------------------+
+
+     +--------------------------+
+     | Random Pod               |
+     +------------+-------------+
+                  |
+                  X
+               Blocked
+```
+
+---
+
+# Deny All Traffic
+
+Create a Network Policy with empty ingress rules.
+
+Example:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+  name: deny-all
+
+spec:
+
+  # Select all pods
+  podSelector: {}
+
+  policyTypes:
+  - Ingress
+
+  # No ingress rules
+  ingress: []
+```
+
+---
+
+## Result
+
+```text
+All Incoming Traffic Blocked
+```
+
+---
+
+# Allow Traffic from Specific Pods
+
+Allow only Pods with a specific label.
+
+Example:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+  name: allow-springboot
+
+spec:
+
+  podSelector:
+    matchLabels:
+      app: mongodb
+
+  policyTypes:
+  - Ingress
+
+  ingress:
+
+  - from:
+
+    - podSelector:
+
+        matchLabels:
+          app: springboot
+```
+
+---
+
+## Result
+
+```text
+Spring Boot → MongoDB ✓
+
+Other Pods → MongoDB ✗
+```
+
+---
+
+# Allow Traffic from Specific Namespace
+
+Example:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+  name: allow-dev-namespace
+
+spec:
+
+  podSelector:
+    matchLabels:
+      app: mongodb
+
+  ingress:
+
+  - from:
+
+    - namespaceSelector:
+
+        matchLabels:
+          name: dev
+```
+
+---
+
+## Result
+
+```text
+Pods From Namespace dev
+           |
+           v
+        Allowed
+
+Other Namespaces
+           |
+           X
+        Blocked
+```
+
+---
+
+# Allow Traffic from Specific IP Address
+
+Using CIDR blocks.
+
+Example:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+  name: allow-specific-ip
+
+spec:
+
+  podSelector:
+    matchLabels:
+      app: mongodb
+
+  ingress:
+
+  - from:
+
+    - ipBlock:
+
+        # Allowed IP range
+        cidr: 192.168.1.0/24
+```
+
+---
+
+## Result
+
+```text
+192.168.1.x → Allowed
+
+Others → Blocked
+```
+
+---
+
+# Network Policy Flow
+
+```text
+Incoming Request
+        |
+        v
+
+Network Policy Exists?
+        |
+        +---- No ----> Allow
+        |
+        +---- Yes
+                |
+                v
+
+Rule Matches?
+        |
+        +---- Yes ---> Allow
+        |
+        +---- No ----> Deny
+```
+
+---
+
+# CoreDNS + Network Policy Example
+
+```text
+Spring Boot Pod
+       |
+       |
+       v
+
+mongodb.default.svc.cluster.local
+       |
+       |
+       v
+
+CoreDNS Resolves Service
+       |
+       v
+
+MongoDB Service
+       |
+       v
+
+Network Policy Check
+       |
+       +---- Allowed -> Connect
+       |
+       +---- Denied  -> Block
+```
+
+---
+
+# Interview Questions
+
+## Q1: What is CoreDNS?
+
+CoreDNS is Kubernetes' DNS server that creates DNS records for Services and Pods.
+
+---
+
+## Q2: How do Services communicate across namespaces?
+
+Using:
+
+```text
+service-name.namespace.svc.cluster.local
+```
+
+Example:
+
+```text
+mongodb.prod.svc.cluster.local
+```
+
+---
+
+## Q3: What objects get DNS records?
+
+* Services
+* Pods
+
+---
+
+## Q4: What is a Network Policy?
+
+A Kubernetes resource used to control network traffic between Pods.
+
+---
+
+## Q5: What happens if no Network Policy exists?
+
+By default:
+
+```text
+All traffic is allowed
+```
+
+---
+
+## Q6: Can Network Policies allow traffic from specific namespaces?
+
+Yes.
+
+Using:
+
+```yaml
+namespaceSelector:
+```
+
+---
+
+# Summary
+
+## CoreDNS
+
+Provides DNS records for:
+
+* Services
+* Pods
+
+---
+
+## Service Discovery
+
+Service FQDN:
+
+```text
+service.namespace.svc.cluster.local
+```
+
+---
+
+## Network Policies
+
+Used to:
+
+* Deny Traffic
+* Allow Traffic
+* Restrict Pod Communication
+
+---
+
+## Traffic Control Options
+
+* Pod Selector
+* Namespace Selector
+* IP Block (CIDR)
+
+---
+
+# Final Architecture
+
+```text
+                 Kubernetes Cluster
+
+                          |
+       ----------------------------------------
+       |                                      |
+       v                                      v
+
+     CoreDNS                         Network Policies
+
+       |                                      |
+
+ Resolve Service Names              Control Traffic
+
+       |                                      |
+
+ mongodb.default                Allow / Deny Rules
+
+       |                                      |
+
+       ------------------- Application ----------------
+```
+
+# Kubernetes Network Policies with Spring Boot and MongoDB
+
+## Project Overview
+
+In this project, we deploy:
+
+* MongoDB Database
+* Spring Boot Application
+* MongoDB Service
+* Spring Boot Service
+* Network Policies
+
+The objective is to understand:
+
+* Pod-to-Pod communication
+* Service communication
+* Ingress traffic
+* Egress traffic
+* Allow and Deny rules using Network Policies
+
+---
+
+# Application Architecture
+
+```text
+                    Internet User
+                           |
+                           |
+                           v
+                +---------------------+
+                | Spring Boot Service |
+                |     NodePort        |
+                +----------+----------+
+                           |
+                           |
+                           v
+                +---------------------+
+                | Spring Boot Pods    |
+                | app=myapp           |
+                +----------+----------+
+                           |
+                           | Egress
+                           |
+                           v
+                +---------------------+
+                | MongoDB Service     |
+                |     ClusterIP       |
+                +----------+----------+
+                           |
+                           |
+                           v
+                +---------------------+
+                | MongoDB Pod         |
+                | app=mongodb         |
+                +---------------------+
+
+```
+
+---
+
+# Deploy MongoDB
+
+MongoDB acts as the backend database for the Spring Boot application.
+
+## MongoDB Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  # Deployment name
+  name: mongodb
+
+  labels:
+    app: mongodb
+
+spec:
+
+  # Number of MongoDB pods
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: mongodb
+
+  template:
+
+    metadata:
+      labels:
+        app: mongodb
+
+    spec:
+
+      containers:
+
+      - name: mongo
+
+        # MongoDB image
+        image: lerndevops/samples:mongodb
+```
+
+---
+
+## MongoDB Service YAML
+
+```yaml
+apiVersion: v1
+kind: Service
+
+metadata:
+
+  # Service name
+  name: mongo
+
+spec:
+
+  # Internal service
+  type: ClusterIP
+
+  ports:
+
+  - port: 27017
+
+    # MongoDB container port
+    targetPort: 27017
+
+  selector:
+
+    # Select MongoDB pods
+    app: mongodb
+```
+
+---
+
+# Deploy Spring Boot Application
+
+The Spring Boot application connects to MongoDB.
+
+## Spring Boot Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+
+  # Deployment name
+  name: springboot-app
+
+spec:
+
+  # Create 2 replicas
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: myapp
+
+  template:
+
+    metadata:
+      labels:
+        app: myapp
+
+    spec:
+
+      containers:
+
+      - name: springboot-app
+
+        # Spring Boot image
+        image: lerndevops/samples:springboot-app
+```
+
+---
+
+## Spring Boot Service YAML
+
+```yaml
+apiVersion: v1
+kind: Service
+
+metadata:
+
+  # Service name
+  name: springboot-app-svc
+
+spec:
+
+  # Expose application externally
+  type: NodePort
+
+  ports:
+
+  - port: 80
+
+    # Spring Boot container port
+    targetPort: 8080
+
+  selector:
+
+    # Select Spring Boot pods
+    app: myapp
+```
+
+---
+
+# Verify Resources
+
+```bash
+# View deployments
+kubectl get deploy
+
+# View services
+kubectl get svc
+
+# View pods
+kubectl get pods
+
+# View all resources
+kubectl get all
+```
+
+---
+
+# Understanding Network Policies
+
+## What is a Network Policy?
+
+A Network Policy is a Kubernetes resource that controls network communication between Pods.
+
+Think of it as:
+
+```text
+Firewall for Pods
+```
+
+It defines:
+
+* Which Pods can communicate
+* Which traffic is allowed
+* Which traffic is denied
+
+---
+
+# Why Use Network Policies?
+
+Without Network Policies:
+
+```text
+All Pods Can Talk To All Pods
+```
+
+With Network Policies:
+
+```text
+Only Authorized Pods Can Communicate
+```
+
+This improves:
+
+* Security
+* Isolation
+* Compliance
+* Application Protection
+
+---
+
+# Understanding Ingress and Egress
+
+## Ingress
+
+Traffic entering a Pod.
+
+Example:
+
+```text
+User
+ |
+ v
+Spring Boot Pod
+```
+
+This is ingress traffic for Spring Boot.
+
+---
+
+## Egress
+
+Traffic leaving a Pod.
+
+Example:
+
+```text
+Spring Boot Pod
+       |
+       v
+MongoDB Pod
+```
+
+This is egress traffic for Spring Boot.
+
+---
+
+## Visual Representation
+
+```text
+           Ingress
+              |
+              v
+
+      +----------------+
+      | Spring Boot    |
+      +----------------+
+              |
+              |
+              v
+            Egress
+
+      +----------------+
+      | MongoDB        |
+      +----------------+
+```
+
+---
+
+# Deny All Incoming Traffic
+
+First, we block all incoming traffic to MongoDB and Spring Boot.
+
+## Deny MongoDB Ingress
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+
+  # Policy name
+  name: deny-mongodb-ingress-from-all
+
+  namespace: default
+
+spec:
+
+  podSelector:
+
+    matchLabels:
+      app: mongodb
+
+  policyTypes:
+
+  # Apply only ingress rules
+  - Ingress
+```
+
+---
+
+## Deny Spring Boot Ingress
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+
+  # Policy name
+  name: deny-springapp-ingress-from-all
+
+  namespace: default
+
+spec:
+
+  podSelector:
+
+    matchLabels:
+      app: myapp
+
+  policyTypes:
+
+  - Ingress
+```
+
+---
+
+## Result
+
+```text
+Spring Boot  -> Blocked
+
+MongoDB      -> Blocked
+```
+
+No incoming traffic is allowed.
+
+---
+
+# Allow Spring Boot to Access MongoDB
+
+We want only Spring Boot pods to connect to MongoDB.
+
+## MongoDB Allow Policy
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+
+  # Policy name
+  name: allow-mongodb-ingress-from-springapp
+
+  namespace: default
+
+spec:
+
+  podSelector:
+
+    # Apply to MongoDB Pods
+    matchLabels:
+      app: mongodb
+
+  policyTypes:
+
+  - Ingress
+
+  ingress:
+
+  - from:
+
+    # Allow only Spring Boot pods
+    - podSelector:
+
+        matchLabels:
+          app: myapp
+```
+
+---
+
+## Communication Flow
+
+```text
+Spring Boot Pod
+       |
+       |
+       v
+MongoDB Pod
+
+Allowed
+```
+
+---
+
+## Blocked Communication
+
+```text
+Random Pod
+     |
+     |
+     X
+MongoDB
+
+Blocked
+```
+
+---
+
+# Allow Traffic to Spring Boot
+
+Spring Boot should accept traffic from anywhere.
+
+## Spring Boot Allow Policy
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+
+  # Policy name
+  name: allow-springapp-ingress-from-all
+
+  namespace: default
+
+spec:
+
+  podSelector:
+
+    matchLabels:
+      app: myapp
+
+  policyTypes:
+
+  - Ingress
+
+  ingress:
+
+  - from:
+
+    - ipBlock:
+
+        # Allow all IP addresses
+        cidr: 0.0.0.0/0
+```
+
+---
+
+## Result
+
+```text
+Internet
+    |
+    v
+Spring Boot
+
+Allowed
+```
+
+---
+
+# Allow Traffic from a Specific Namespace
+
+Sometimes only Pods from a particular namespace should communicate.
+
+---
+
+## Create Namespace with Label
+
+```bash
+# Create namespace
+kubectl create namespace test
+```
+
+Add label:
+
+```bash
+# Add label to namespace
+kubectl label namespace test app=test
+```
+
+---
+
+## Create Namespace Network Policy
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+
+  # Policy name
+  name: allow-traffic-in-ns
+
+  namespace: test
+
+spec:
+
+  # Select all pods
+  podSelector: {}
+
+  policyTypes:
+
+  - Ingress
+
+  ingress:
+
+  - from:
+
+    - namespaceSelector:
+
+        matchLabels:
+
+          app: test
+```
+
+---
+
+## Result
+
+```text
+Namespace test
+      |
+      v
+ Allowed
+
+Other Namespaces
+      |
+      X
+ Blocked
+```
+
+---
+
+# Default Deny All Egress Traffic
+
+This policy blocks all outgoing traffic.
+
+## Egress Deny Policy
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+
+  # Policy name
+  name: default-deny-egress
+
+spec:
+
+  # Select all pods
+  podSelector: {}
+
+  policyTypes:
+
+  - Egress
+```
+
+---
+
+## Result
+
+```text
+Pod
+ |
+ X
+Cannot Connect Anywhere
+```
+
+---
+
+# Default Deny All Traffic
+
+This policy blocks:
+
+* All ingress traffic
+* All egress traffic
+
+---
+
+## Default Deny All Policy
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+
+  # Policy name
+  name: default-deny-all
+
+spec:
+
+  # Select all pods
+  podSelector: {}
+
+  policyTypes:
+
+  - Ingress
+
+  - Egress
+```
+
+---
+
+## Result
+
+```text
+All Incoming Traffic  -> Blocked
+
+All Outgoing Traffic  -> Blocked
+```
+
+---
+
+# Multi-Port Egress Policy
+
+Allows Pods to communicate only on a specific port range.
+
+## Example Policy
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+
+  # Policy name
+  name: multi-port-egress
+
+  namespace: default
+
+spec:
+
+  podSelector:
+
+    matchLabels:
+
+      # Apply to database pods
+      role: db
+
+  policyTypes:
+
+  - Egress
+
+  egress:
+
+  - to:
+
+    - ipBlock:
+
+        # Allowed subnet
+        cidr: 10.0.0.0/24
+
+    ports:
+
+    - protocol: TCP
+
+      # Starting port
+      port: 32000
+
+      # Ending port
+      endPort: 32768
+```
+
+---
+
+## What This Policy Does
+
+Allows:
+
+```text
+Pods with role=db
+       |
+       v
+10.0.0.0/24
+       |
+       v
+TCP Ports 32000-32768
+```
+
+---
+
+# Network Policy Processing Flow
+
+```text
+Request Arrives
+        |
+        v
+
+Network Policy Exists?
+        |
+        +---- No ----> Allow
+        |
+        +---- Yes
+                |
+                v
+
+Rule Matches?
+        |
+        +---- Yes ---> Allow
+        |
+        +---- No ----> Deny
+```
+
+---
+
+# Interview Questions
+
+## Q1. What is a Network Policy?
+
+A Network Policy is a Kubernetes resource used to control Pod-to-Pod communication.
+
+---
+
+## Q2. What is Ingress?
+
+Traffic entering a Pod.
+
+Example:
+
+```text
+User -> Spring Boot
+```
+
+---
+
+## Q3. What is Egress?
+
+Traffic leaving a Pod.
+
+Example:
+
+```text
+Spring Boot -> MongoDB
+```
+
+---
+
+## Q4. What happens if no Network Policy exists?
+
+By default:
+
+```text
+All traffic is allowed.
+```
+
+---
+
+## Q5. Can Network Policies allow traffic from specific namespaces?
+
+Yes.
+
+Using:
+
+```yaml
+namespaceSelector:
+```
+
+---
+
+## Q6. Can Network Policies allow traffic from specific IP ranges?
+
+Yes.
+
+Using:
+
+```yaml
+ipBlock:
+  cidr: 192.168.1.0/24
+```
+
+---
+
+# Summary
+
+## Spring Boot
+
+* Exposed through NodePort
+* Accessible from external users
+
+## MongoDB
+
+* Exposed through ClusterIP
+* Accessible only inside cluster
+
+## Network Policies
+
+Used to:
+
+* Deny Traffic
+* Allow Traffic
+* Restrict Communication
+* Improve Security
+
+## Traffic Filters
+
+* Pod Selector
+* Namespace Selector
+* IP Block
+
+## Best Practice
+
+```text
+Default Deny All
+       |
+       v
+Allow Only Required Traffic
+```
+
+This follows the Principle of Least Privilege and is the recommended approach for production Kubernetes clusters.
