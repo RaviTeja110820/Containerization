@@ -12680,3 +12680,634 @@ Allow Only Required Traffic
 ```
 
 This follows the Principle of Least Privilege and is the recommended approach for production Kubernetes clusters.
+
+
+
+# Kubernetes DaemonSet
+
+## Introduction
+
+A **DaemonSet** is a Kubernetes workload object that ensures **one Pod runs on every node** in the cluster.
+
+Unlike a Deployment, where you specify the number of replicas, a DaemonSet automatically creates **one Pod per node**.
+
+Whenever:
+
+* A new node joins the cluster → a new DaemonSet Pod is created automatically.
+* A node is removed from the cluster → the corresponding DaemonSet Pod is removed automatically.
+
+---
+
+# Why Use DaemonSets?
+
+DaemonSets are commonly used for applications that need to run on **every node**.
+
+Examples:
+
+| Use Case           | Example                  |
+| ------------------ | ------------------------ |
+| Antivirus          | ClamAV                   |
+| Monitoring Agent   | Prometheus Node Exporter |
+| Log Collection     | Fluentd                  |
+| Security Agent     | Falco                    |
+| Networking Plugin  | Calico                   |
+| Metrics Collection | Datadog Agent            |
+
+---
+
+# DaemonSet Architecture
+
+```text
+                    Kubernetes Cluster
+
+        +-----------------------------------+
+        | Node-1                            |
+        |                                   |
+        | DaemonSet Pod (ClamAV)            |
+        +-----------------------------------+
+
+        +-----------------------------------+
+        | Node-2                            |
+        |                                   |
+        | DaemonSet Pod (ClamAV)            |
+        +-----------------------------------+
+
+        +-----------------------------------+
+        | Node-3                            |
+        |                                   |
+        | DaemonSet Pod (ClamAV)            |
+        +-----------------------------------+
+```
+
+Notice:
+
+```text
+1 Node = 1 DaemonSet Pod
+```
+
+---
+
+# Difference Between Deployment and DaemonSet
+
+## Deployment
+
+Suppose:
+
+```yaml
+replicas: 3
+```
+
+Kubernetes creates exactly:
+
+```text
+3 Pods
+```
+
+These Pods can run on any nodes.
+
+Example:
+
+```text
+Node-1 → 2 Pods
+Node-2 → 1 Pod
+Node-3 → 0 Pods
+```
+
+---
+
+## DaemonSet
+
+Kubernetes creates:
+
+```text
+1 Pod Per Node
+```
+
+Example:
+
+```text
+Node-1 → 1 Pod
+Node-2 → 1 Pod
+Node-3 → 1 Pod
+```
+
+No replica count is needed.
+
+---
+
+# DaemonSet YAML
+
+## DaemonSet Definition
+
+```yaml
+apiVersion: apps/v1
+
+# Kubernetes object type
+kind: DaemonSet
+
+metadata:
+
+  # DaemonSet name
+  name: myds
+
+spec:
+
+  selector:
+
+    matchLabels:
+
+      # Select Pods with this label
+      app: anti-virus
+
+  template:
+
+    metadata:
+
+      labels:
+
+        # Label assigned to Pods
+        app: anti-virus
+
+    spec:
+
+      containers:
+
+      - name: c1
+
+        # ClamAV Antivirus image
+        image: clamav/clamav
+```
+
+---
+
+# Explanation of YAML
+
+## apiVersion
+
+```yaml
+apiVersion: apps/v1
+```
+
+Defines the API version used by the DaemonSet.
+
+---
+
+## kind
+
+```yaml
+kind: DaemonSet
+```
+
+Tells Kubernetes to create a DaemonSet object.
+
+---
+
+## metadata
+
+```yaml
+metadata:
+  name: myds
+```
+
+Name of the DaemonSet.
+
+---
+
+## selector
+
+```yaml
+selector:
+  matchLabels:
+    app: anti-virus
+```
+
+Used by Kubernetes to identify Pods managed by the DaemonSet.
+
+---
+
+## template
+
+```yaml
+template:
+```
+
+Defines the Pod template.
+
+This template is used to create Pods on every node.
+
+---
+
+## labels
+
+```yaml
+labels:
+  app: anti-virus
+```
+
+Label assigned to every DaemonSet Pod.
+
+---
+
+## container
+
+```yaml
+containers:
+- name: c1
+  image: clamav/clamav
+```
+
+Container configuration.
+
+Here we are running:
+
+```text
+ClamAV Antivirus
+```
+
+on every node.
+
+---
+
+# Create DaemonSet
+
+Save the file:
+
+```bash
+# Create YAML file
+vim DaemonSet.yml
+```
+
+Apply:
+
+```bash
+# Create DaemonSet
+kubectl create -f DaemonSet.yml
+```
+
+---
+
+# Verify DaemonSet
+
+Check DaemonSet:
+
+```bash
+# List DaemonSets
+kubectl get daemonsets
+```
+
+Example:
+
+```text
+NAME   DESIRED   CURRENT   READY
+myds      3         3        3
+```
+
+Meaning:
+
+| Field   | Meaning         |
+| ------- | --------------- |
+| DESIRED | Number of nodes |
+| CURRENT | Running Pods    |
+| READY   | Healthy Pods    |
+
+---
+
+# Check Pods
+
+```bash
+# View pods
+kubectl get pods -o wide
+```
+
+Example:
+
+```text
+NAME               NODE
+myds-abc12         node-1
+myds-def34         node-2
+myds-ghi56         node-3
+```
+
+Notice:
+
+```text
+One Pod Per Node
+```
+
+---
+
+# DaemonSet Scheduling Diagram
+
+```text
+                 DaemonSet
+
+                      |
+                      |
+                      v
+
+        +--------------------------+
+        | Node-1                   |
+        | ClamAV Pod               |
+        +--------------------------+
+
+        +--------------------------+
+        | Node-2                   |
+        | ClamAV Pod               |
+        +--------------------------+
+
+        +--------------------------+
+        | Node-3                   |
+        | ClamAV Pod               |
+        +--------------------------+
+```
+
+---
+
+# Adding a New Node
+
+Suppose the cluster initially has:
+
+```text
+Node-1
+Node-2
+Node-3
+```
+
+DaemonSet Pods:
+
+```text
+Pod-1
+Pod-2
+Pod-3
+```
+
+---
+
+## Before Adding Node
+
+```text
+Node-1 → ClamAV Pod
+Node-2 → ClamAV Pod
+Node-3 → ClamAV Pod
+```
+
+---
+
+## Add New Node
+
+```text
+Node-4 Joined Cluster
+```
+
+Kubernetes automatically detects:
+
+```text
+New Node Available
+```
+
+DaemonSet automatically creates:
+
+```text
+ClamAV Pod on Node-4
+```
+
+---
+
+## After Adding Node
+
+```text
+Node-1 → ClamAV Pod
+Node-2 → ClamAV Pod
+Node-3 → ClamAV Pod
+Node-4 → ClamAV Pod
+```
+
+No manual action required.
+
+---
+
+# Automatic Scaling Behavior
+
+Deployment:
+
+```text
+Manual Scaling Required
+```
+
+Example:
+
+```bash
+kubectl scale deployment app --replicas=5
+```
+
+---
+
+DaemonSet:
+
+```text
+Automatic Scaling Based On Nodes
+```
+
+Add a node:
+
+```text
+New Pod Created Automatically
+```
+
+Remove a node:
+
+```text
+Pod Removed Automatically
+```
+
+---
+
+# View Detailed Information
+
+```bash
+# Describe DaemonSet
+kubectl describe daemonset myds
+```
+
+Shows:
+
+* Desired Pods
+* Current Pods
+* Node Assignment
+* Events
+
+---
+
+# Common Commands
+
+## List DaemonSets
+
+```bash
+kubectl get daemonsets
+```
+
+---
+
+## Get Detailed Information
+
+```bash
+kubectl describe daemonset myds
+```
+
+---
+
+## View Pods
+
+```bash
+kubectl get pods -o wide
+```
+
+---
+
+## Delete DaemonSet
+
+```bash
+kubectl delete daemonset myds
+```
+
+---
+
+# Real-World Use Cases
+
+## Antivirus
+
+```text
+ClamAV
+```
+
+Scans every node for malware.
+
+---
+
+## Monitoring
+
+```text
+Node Exporter
+```
+
+Collects CPU, Memory, Disk metrics from every node.
+
+---
+
+## Logging
+
+```text
+Fluentd
+```
+
+Collects logs from every node.
+
+---
+
+## Security
+
+```text
+Falco
+```
+
+Monitors suspicious activities on every node.
+
+---
+
+# Deployment vs DaemonSet
+
+| Feature           | Deployment     | DaemonSet                 |
+| ----------------- | -------------- | ------------------------- |
+| Pod Count         | Fixed Replicas | One Per Node              |
+| Scaling           | Manual         | Automatic                 |
+| Use Case          | Applications   | Node Services             |
+| New Node Handling | No Action      | Pod Created Automatically |
+
+---
+
+# Interview Questions
+
+## Q1. What is a DaemonSet?
+
+A DaemonSet ensures that a Pod runs on every node in the cluster.
+
+---
+
+## Q2. Do we specify replicas in a DaemonSet?
+
+No.
+
+Kubernetes automatically creates one Pod per node.
+
+---
+
+## Q3. What happens when a new node is added?
+
+DaemonSet automatically creates a new Pod on the new node.
+
+---
+
+## Q4. Give examples of DaemonSet usage.
+
+* ClamAV
+* Fluentd
+* Node Exporter
+* Falco
+* Datadog Agent
+
+---
+
+## Q5. Difference between Deployment and DaemonSet?
+
+Deployment creates a specified number of replicas.
+
+DaemonSet creates one Pod per node.
+
+---
+
+# Summary
+
+## Deployment
+
+```text
+You Decide Number Of Pods
+```
+
+Example:
+
+```yaml
+replicas: 3
+```
+
+---
+
+## DaemonSet
+
+```text
+Kubernetes Decides Number Of Pods
+```
+
+Based on:
+
+```text
+Number Of Nodes
+```
+
+---
+
+## Key Point
+
+```text
+1 Node = 1 DaemonSet Pod
+```
+
+This makes DaemonSets ideal for:
+
+* Monitoring
+* Logging
+* Security
+* Networking
+* Antivirus workloads
+
+```
+```
