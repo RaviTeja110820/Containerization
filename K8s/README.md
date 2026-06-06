@@ -13311,3 +13311,1660 @@ This makes DaemonSets ideal for:
 
 ```
 ```
+
+
+# Kubernetes StatefulSets
+
+## Introduction
+
+In Kubernetes, applications can be broadly classified into:
+
+1. Stateless Applications
+2. Stateful Applications
+
+Examples:
+
+| Stateless Applications | Stateful Applications |
+| ---------------------- | --------------------- |
+| Nginx                  | MySQL                 |
+| Apache                 | MongoDB               |
+| Spring Boot            | PostgreSQL            |
+| NodeJS                 | Cassandra             |
+| React App              | Redis                 |
+
+---
+
+# Stateless Applications (Deployments)
+
+For stateless applications, Kubernetes uses a **Deployment**.
+
+Characteristics:
+
+* Multiple replicas can be created.
+* Pods get random names.
+* Pods are interchangeable.
+* No fixed identity.
+* No stable hostname.
+* If a Pod is deleted, a new Pod gets a different name.
+* Communication happens through Services.
+
+---
+
+## Deployment Example
+
+Suppose:
+
+```yaml
+replicas: 2
+```
+
+Pods created:
+
+```text
+nginx-78c8d4fd7f-j2p6m
+nginx-78c8d4fd7f-z8w9k
+```
+
+If a Pod is deleted:
+
+```text
+nginx-78c8d4fd7f-x4s9l
+```
+
+A completely new name is generated.
+
+---
+
+## Deployment Architecture
+
+```text
+                    Deployment
+
+                         |
+                         |
+                         v
+
+         +------------------------------+
+         | nginx-78c8d4fd7f-j2p6m       |
+         +------------------------------+
+
+         +------------------------------+
+         | nginx-78c8d4fd7f-z8w9k       |
+         +------------------------------+
+
+               Random Pod Names
+```
+
+---
+
+# Why StatefulSets?
+
+Some applications require:
+
+* Fixed identity
+* Stable hostname
+* Stable DNS name
+* Ordered deployment
+* Ordered scaling
+* Ordered deletion
+* Persistent storage
+
+Examples:
+
+```text
+MySQL
+MongoDB
+PostgreSQL
+Redis
+Kafka
+ZooKeeper
+Elasticsearch
+```
+
+These applications require StatefulSets.
+
+---
+
+# StatefulSet Features
+
+## Stable Pod Names
+
+Pods receive predictable names:
+
+```text
+web-0
+web-1
+web-2
+```
+
+Unlike Deployments:
+
+```text
+web-7d4d7c7f8c-abc12
+```
+
+---
+
+## Stable Network Identity
+
+Every Pod gets:
+
+```text
+web-0.nginx
+web-1.nginx
+web-2.nginx
+```
+
+These DNS names remain constant.
+
+---
+
+## Ordered Deployment
+
+Pods are created in sequence.
+
+Example:
+
+```text
+web-0
+   |
+   v
+web-1
+   |
+   v
+web-2
+```
+
+Kubernetes waits for:
+
+```text
+web-0 → Running + Ready
+```
+
+before creating:
+
+```text
+web-1
+```
+
+---
+
+## Ordered Deletion
+
+Pods are deleted in reverse order.
+
+Example:
+
+```text
+web-2
+   |
+   v
+web-1
+   |
+   v
+web-0
+```
+
+---
+
+# Headless Service
+
+A StatefulSet must be associated with a **Headless Service**.
+
+## What is a Headless Service?
+
+A Headless Service is a Service without a ClusterIP.
+
+Normal Service:
+
+```text
+Service Name
+      |
+      v
+ClusterIP
+      |
+      v
+Pods
+```
+
+Headless Service:
+
+```text
+Service Name
+      |
+      v
+Direct DNS Records
+      |
+      v
+Individual Pods
+```
+
+---
+
+## Why StatefulSets Need Headless Services?
+
+Because each Pod requires:
+
+* Individual DNS record
+* Stable hostname
+* Direct access
+
+---
+
+# Headless Service YAML
+
+```yaml
+apiVersion: v1
+kind: Service
+
+metadata:
+
+  # Service name
+  name: nginx
+
+  labels:
+    app: nginx
+
+spec:
+
+  ports:
+
+  - port: 80
+
+    # Port name
+    name: web
+
+  # Headless Service
+  clusterIP: None
+
+  selector:
+
+    # Select nginx Pods
+    app: nginx
+```
+
+---
+
+## Important Line
+
+```yaml
+clusterIP: None
+```
+
+This makes the Service headless.
+
+Without this:
+
+```text
+Normal Service
+```
+
+With this:
+
+```text
+Headless Service
+```
+
+---
+
+# StatefulSet YAML
+
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+
+metadata:
+
+  # StatefulSet name
+  name: web
+
+spec:
+
+  # Headless Service name
+  serviceName: "nginx"
+
+  # Number of Pods
+  replicas: 2
+
+  selector:
+
+    matchLabels:
+      app: nginx
+
+  template:
+
+    metadata:
+
+      labels:
+        app: nginx
+
+    spec:
+
+      containers:
+
+      - name: nginx
+
+        # Nginx image
+        image: k8s.gcr.io/nginx-slim:0.8
+
+        ports:
+
+        - containerPort: 80
+
+          name: web
+```
+
+---
+
+# Create StatefulSet
+
+## Step 1
+
+Save YAML:
+
+```bash
+vim web.yml
+```
+
+---
+
+## Step 2
+
+Create StatefulSet:
+
+```bash
+kubectl create -f web.yml
+```
+
+---
+
+## Step 3
+
+Watch Pod Creation
+
+Open another terminal:
+
+```bash
+kubectl get pods -w -l app=nginx
+```
+
+---
+
+# Observe Ordered Creation
+
+Pods are created sequentially.
+
+Example:
+
+```text
+web-0 Creating
+
+web-0 Running
+
+web-1 Creating
+
+web-1 Running
+```
+
+Notice:
+
+```text
+web-1 is not created until web-0 is Ready
+```
+
+---
+
+# Verify StatefulSet
+
+## Check Service
+
+```bash
+kubectl get service nginx
+```
+
+---
+
+## Check StatefulSet
+
+```bash
+kubectl get statefulset web
+```
+
+---
+
+## Check Pods
+
+```bash
+kubectl get pods -l app=nginx
+```
+
+Output:
+
+```text
+web-0
+web-1
+```
+
+---
+
+# StatefulSet Architecture
+
+```text
+                   Headless Service
+
+                           |
+                           |
+                           v
+
+        +----------------------------------+
+        | web-0.nginx                      |
+        +----------------------------------+
+
+        +----------------------------------+
+        | web-1.nginx                      |
+        +----------------------------------+
+
+             Stable DNS Identities
+```
+
+---
+
+# Stable Hostnames
+
+Each Pod receives a hostname.
+
+Check:
+
+```bash
+for i in 0 1; do
+kubectl exec web-$i -- hostname
+done
+```
+
+Output:
+
+```text
+web-0
+web-1
+```
+
+---
+
+# Stable DNS Records
+
+StatefulSet Pods receive DNS entries.
+
+Format:
+
+```text
+pod-name.service-name
+```
+
+Example:
+
+```text
+web-0.nginx
+web-1.nginx
+```
+
+---
+
+# DNS Testing
+
+Create BusyBox Pod:
+
+```bash
+kubectl run -i --tty \
+--image=busybox:1.28 \
+dns-test \
+--restart=Never \
+--rm
+```
+
+---
+
+## Inside BusyBox
+
+Run:
+
+```bash
+nslookup web-0.nginx
+
+nslookup web-1.nginx
+```
+
+Example Output:
+
+```text
+Name: web-0.nginx
+Address: 10.244.1.7
+
+Name: web-1.nginx
+Address: 10.244.2.8
+```
+
+---
+
+# DNS Architecture
+
+```text
+                    CoreDNS
+
+                        |
+      ------------------------------------
+      |                                  |
+      v                                  v
+
+ web-0.nginx                    web-1.nginx
+
+      |                                  |
+      v                                  v
+
+10.244.1.7                      10.244.2.8
+```
+
+---
+
+# Deleting StatefulSet Pods
+
+Delete Pods:
+
+```bash
+kubectl delete pod -l app=nginx
+```
+
+---
+
+## What Happens?
+
+Kubernetes automatically recreates them.
+
+Watch:
+
+```bash
+kubectl get pod -w -l app=nginx
+```
+
+Output:
+
+```text
+web-0 Terminating
+
+web-0 Running
+
+web-1 Terminating
+
+web-1 Running
+```
+
+---
+
+# Important Observation
+
+After recreation:
+
+Pod names remain:
+
+```text
+web-0
+web-1
+```
+
+Hostnames remain:
+
+```text
+web-0.nginx
+web-1.nginx
+```
+
+Only IP addresses may change.
+
+Example:
+
+Before:
+
+```text
+web-0 = 10.244.1.7
+```
+
+After recreation:
+
+```text
+web-0 = 10.244.3.5
+```
+
+---
+
+# Why Not Use Pod IP?
+
+Pod IPs are temporary.
+
+They can change whenever Pods restart.
+
+Bad Practice:
+
+```text
+Application
+     |
+     v
+10.244.1.7
+```
+
+Good Practice:
+
+```text
+Application
+     |
+     v
+web-0.nginx
+```
+
+DNS remains stable.
+
+---
+
+# StatefulSet vs Deployment
+
+| Feature                   | Deployment | StatefulSet |
+| ------------------------- | ---------- | ----------- |
+| Pod Names                 | Random     | Fixed       |
+| DNS Identity              | No         | Yes         |
+| Ordered Scaling           | No         | Yes         |
+| Ordered Deletion          | No         | Yes         |
+| Stable Hostname           | No         | Yes         |
+| Suitable for Databases    | No         | Yes         |
+| Headless Service Required | No         | Yes         |
+
+---
+
+# Real-World Use Cases
+
+## Databases
+
+```text
+MySQL
+PostgreSQL
+MongoDB
+Oracle
+```
+
+---
+
+## Distributed Systems
+
+```text
+Kafka
+ZooKeeper
+Cassandra
+Elasticsearch
+Redis Cluster
+```
+
+---
+
+# Interview Questions
+
+## Q1. Why use StatefulSets?
+
+StatefulSets provide:
+
+* Stable identities
+* Stable hostnames
+* Stable DNS
+* Ordered deployment
+
+---
+
+## Q2. Why do StatefulSets need a Headless Service?
+
+To create:
+
+```text
+Per-Pod DNS Records
+```
+
+such as:
+
+```text
+web-0.nginx
+web-1.nginx
+```
+
+---
+
+## Q3. What is a Headless Service?
+
+A Service with:
+
+```yaml
+clusterIP: None
+```
+
+---
+
+## Q4. What happens when a StatefulSet Pod is deleted?
+
+It is recreated with:
+
+* Same name
+* Same hostname
+* Same DNS identity
+
+---
+
+## Q5. Can Pod IPs change?
+
+Yes.
+
+Pod names and DNS remain stable.
+
+---
+
+# Summary
+
+## Deployment
+
+```text
+Stateless Applications
+```
+
+Examples:
+
+```text
+Nginx
+Apache
+Spring Boot
+```
+
+---
+
+## StatefulSet
+
+```text
+Stateful Applications
+```
+
+Examples:
+
+```text
+MySQL
+MongoDB
+Kafka
+Redis
+```
+
+---
+
+## Key Point
+
+```text
+Deployment = Random Identity
+
+StatefulSet = Fixed Identity
+```
+
+---
+
+# Final Architecture
+
+```text
+                  StatefulSet
+
+                        |
+                        |
+                        v
+
+              Headless Service
+               (clusterIP=None)
+
+                        |
+        ---------------------------------
+        |                               |
+        v                               v
+
+    web-0.nginx                   web-1.nginx
+
+        |                               |
+        v                               v
+
+   Stable DNS                     Stable DNS
+
+        |                               |
+        ---------------------------------
+
+                Stateful Application
+```
+
+
+# Kubernetes Mini Project: Stateless and Stateful Applications
+
+## Project Overview
+
+In this mini project, we deploy:
+
+### Stateless Application
+
+A Node.js application deployed using a **Deployment**.
+
+Characteristics:
+
+* Pods are interchangeable
+* Pods have random names
+* Easy to scale
+* No stable identity required
+
+### Stateful Application
+
+A Redis database deployed using a **StatefulSet**.
+
+Characteristics:
+
+* Stable Pod names
+* Stable DNS names
+* Ordered deployment
+* Ordered scaling
+* Stable network identity
+
+---
+
+# Architecture Diagram
+
+```text
+                           User/Application
+                                   |
+                                   |
+                                   v
+
+                     +--------------------------+
+                     | Node.js Deployment       |
+                     | (2 Replicas)             |
+                     +------------+-------------+
+                                  |
+                                  |
+                                  v
+
+         redis-0.redis.default.svc.cluster.local
+
+                                  |
+                                  |
+                                  v
+
+                     +--------------------------+
+                     | Headless Service         |
+                     | clusterIP: None          |
+                     +------------+-------------+
+                                  |
+                                  |
+          -----------------------------------------------
+          |                                             |
+          v                                             v
+
+ +--------------------+                   +--------------------+
+ | Redis StatefulSet  |                   | Redis StatefulSet  |
+ | redis-0            |                   | redis-1            |
+ +--------------------+                   +--------------------+
+
+ Stable Hostname                         Stable Hostname
+```
+
+---
+
+# Understanding the Project
+
+The project contains two applications:
+
+| Application | Type      |
+| ----------- | --------- |
+| Node.js     | Stateless |
+| Redis       | Stateful  |
+
+The Node.js application writes data into Redis every 5 seconds.
+
+---
+
+# Why Redis Uses StatefulSet
+
+Redis is a database.
+
+Databases require:
+
+* Stable hostname
+* Stable DNS
+* Persistent identity
+* Predictable naming
+
+Therefore:
+
+```text
+Redis → StatefulSet
+```
+
+---
+
+# Why Node.js Uses Deployment
+
+Node.js application:
+
+* Does not store data locally
+* Any Pod can handle requests
+* Pods are interchangeable
+
+Therefore:
+
+```text
+Node.js → Deployment
+```
+
+---
+
+# Stateful Application: Redis
+
+## Redis StatefulSet
+
+File:
+
+```bash
+# Create StatefulSet YAML
+vim statefulapp.yml
+```
+
+---
+
+## Redis StatefulSet YAML
+
+```yaml
+apiVersion: apps/v1
+
+# Stateful application
+kind: StatefulSet
+
+metadata:
+
+  # StatefulSet name
+  name: redis
+
+spec:
+
+  # Headless service name
+  serviceName: "redis"
+
+  # Number of Redis replicas
+  replicas: 2
+
+  selector:
+
+    matchLabels:
+
+      # Match Redis pods
+      app: redis
+
+  template:
+
+    metadata:
+
+      labels:
+
+        # Label assigned to Redis pods
+        app: redis
+
+    spec:
+
+      containers:
+
+      - name: redis
+
+        # Redis image
+        image: redis:7
+
+        ports:
+
+        # Redis port
+        - containerPort: 6379
+```
+
+---
+
+# Redis Headless Service
+
+## Why Headless Service?
+
+StatefulSets require a Headless Service because:
+
+* Every Pod gets its own DNS name
+* No load balancing
+* Direct Pod access
+
+---
+
+## Redis Service YAML
+
+```yaml
+apiVersion: v1
+
+# Service object
+kind: Service
+
+metadata:
+
+  # Service name
+  name: redis
+
+spec:
+
+  ports:
+
+  - port: 6379
+
+  # Headless Service
+  clusterIP: None
+
+  selector:
+
+    # Select Redis pods
+    app: redis
+```
+
+---
+
+# Important Line
+
+```yaml
+clusterIP: None
+```
+
+This converts the Service into a:
+
+```text
+Headless Service
+```
+
+---
+
+# Redis Pod Naming
+
+Since Redis is a StatefulSet:
+
+Pods receive predictable names.
+
+```text
+redis-0
+redis-1
+```
+
+If scaled:
+
+```text
+redis-0
+redis-1
+redis-2
+redis-3
+```
+
+---
+
+# Redis DNS Names
+
+Each Redis Pod receives a stable DNS name.
+
+Format:
+
+```text
+pod-name.service-name.namespace.svc.cluster.local
+```
+
+Examples:
+
+```text
+redis-0.redis.default.svc.cluster.local
+
+redis-1.redis.default.svc.cluster.local
+```
+
+These names never change.
+
+---
+
+# StatefulSet Creation Order
+
+Pods are created sequentially.
+
+```text
+redis-0
+   |
+   v
+redis-1
+```
+
+Redis-1 will not start until:
+
+```text
+redis-0 is Running and Ready
+```
+
+---
+
+# Stateless Application: Node.js
+
+## Create Deployment
+
+File:
+
+```bash
+# Create Deployment YAML
+vim statelessapp.yml
+```
+
+---
+
+## Node.js Deployment YAML
+
+```yaml
+apiVersion: apps/v1
+
+# Stateless application
+kind: Deployment
+
+metadata:
+
+  # Deployment name
+  name: node-app
+
+spec:
+
+  # Create two replicas
+  replicas: 2
+
+  selector:
+
+    matchLabels:
+
+      # Match node application pods
+      app: node-app
+
+  template:
+
+    metadata:
+
+      labels:
+
+        # Pod label
+        app: node-app
+
+    spec:
+
+      containers:
+
+      - name: node-container
+
+        # Node.js image
+        image: sonal04/mynoderedis
+
+        command:
+
+        # Execute node inline script
+        - node
+        - -e
+
+        args:
+
+        - |
+          const redis = require('redis');
+
+          // Connect to Redis StatefulSet Pod
+          const client = redis.createClient({
+            url: 'redis://redis-0.redis.default.svc.cluster.local:6379'
+          });
+
+          client.connect();
+
+          setInterval(async () => {
+
+            // Store current timestamp
+            await client.set(
+              'time',
+              new Date().toISOString()
+            );
+
+            // Read timestamp
+            const time =
+              await client.get('time');
+
+            console.log(
+              'Redis time:',
+              time
+            );
+
+          }, 5000);
+
+        env:
+
+        - name: NODE_ENV
+
+          # Production environment
+          value: production
+```
+
+---
+
+# Understanding the Node.js Code
+
+The application:
+
+### Step 1
+
+Connects to Redis.
+
+```javascript
+redis://redis-0.redis.default.svc.cluster.local:6379
+```
+
+---
+
+### Step 2
+
+Every 5 seconds:
+
+```javascript
+setInterval()
+```
+
+runs.
+
+---
+
+### Step 3
+
+Stores current time in Redis.
+
+```javascript
+client.set()
+```
+
+---
+
+### Step 4
+
+Reads current time.
+
+```javascript
+client.get()
+```
+
+---
+
+### Step 5
+
+Prints result.
+
+```javascript
+console.log()
+```
+
+---
+
+# Communication Flow
+
+```text
+Node.js Pod
+      |
+      |
+      v
+
+redis-0.redis.default.svc.cluster.local
+
+      |
+      |
+      v
+
+Redis Pod
+
+      |
+      |
+      v
+
+Store Timestamp
+```
+
+---
+
+# Why Use redis-0 Instead of Service?
+
+Normally:
+
+```text
+redis.default.svc.cluster.local
+```
+
+points to all Redis Pods.
+
+But:
+
+```text
+redis-0.redis.default.svc.cluster.local
+```
+
+points specifically to:
+
+```text
+redis-0
+```
+
+This is useful when:
+
+* Specific database instance required
+* Master node access needed
+* Replication topology exists
+
+---
+
+# Verify Resources
+
+## Check StatefulSet
+
+```bash
+# View StatefulSet
+kubectl get statefulset
+```
+
+---
+
+## Check Redis Pods
+
+```bash
+# View Redis Pods
+kubectl get pods
+```
+
+Expected:
+
+```text
+redis-0
+redis-1
+```
+
+---
+
+## Check Services
+
+```bash
+# View services
+kubectl get svc
+```
+
+Expected:
+
+```text
+redis
+```
+
+---
+
+## Check Node.js Pods
+
+```bash
+# View Node.js pods
+kubectl get pods
+```
+
+Expected:
+
+```text
+node-app-xxxxx
+
+node-app-yyyyy
+```
+
+Notice:
+
+Node.js pods have random names.
+
+Redis pods have fixed names.
+
+---
+
+# Test Inter-Pod Communication
+
+Connect to Node.js Pod.
+
+```bash
+# Enter Node.js pod
+kubectl exec -it node-app-xxxxx -- sh
+```
+
+---
+
+## Install Redis Client
+
+```bash
+# Update packages
+apt-get update
+
+# Install redis tools
+apt-get install redis-tools -y
+```
+
+---
+
+## Connect to Redis
+
+```bash
+# Connect to Redis service
+redis-cli -h redis -p 6379
+```
+
+---
+
+## Test Connection
+
+```bash
+PING
+```
+
+Output:
+
+```text
+PONG
+```
+
+Successful communication confirms:
+
+```text
+Node.js
+     ↔
+Redis
+```
+
+communication is working.
+
+---
+
+# StatefulSet vs Deployment
+
+| Feature          | Deployment      | StatefulSet |
+| ---------------- | --------------- | ----------- |
+| Pod Names        | Random          | Fixed       |
+| DNS Names        | Dynamic         | Stable      |
+| Scaling          | Parallel        | Sequential  |
+| Identity         | No              | Yes         |
+| Headless Service | Not Required    | Required    |
+| Databases        | Not Recommended | Recommended |
+
+---
+
+# Real World Examples
+
+## Deployment
+
+Used for:
+
+```text
+Nginx
+
+Apache
+
+Spring Boot
+
+React
+
+Node.js
+```
+
+---
+
+## StatefulSet
+
+Used for:
+
+```text
+MySQL
+
+Redis
+
+MongoDB
+
+PostgreSQL
+
+Kafka
+
+ZooKeeper
+```
+
+---
+
+# Interview Questions
+
+## Q1. Why does Redis use StatefulSet?
+
+Because Redis requires:
+
+* Stable hostname
+* Stable DNS
+* Persistent identity
+
+---
+
+## Q2. Why does Node.js use Deployment?
+
+Because it is stateless.
+
+Any Pod can serve requests.
+
+---
+
+## Q3. Why is clusterIP: None used?
+
+To create a Headless Service.
+
+```yaml
+clusterIP: None
+```
+
+---
+
+## Q4. What is the hostname of the first Redis Pod?
+
+```text
+redis-0
+```
+
+Full DNS:
+
+```text
+redis-0.redis.default.svc.cluster.local
+```
+
+---
+
+## Q5. What happens if redis-0 is deleted?
+
+Kubernetes recreates:
+
+```text
+redis-0
+```
+
+with the same hostname and identity.
+
+---
+
+# Summary
+
+## Node.js
+
+```text
+Stateless Application
+```
+
+Uses:
+
+```text
+Deployment
+```
+
+---
+
+## Redis
+
+```text
+Stateful Application
+```
+
+Uses:
+
+```text
+StatefulSet
+```
+
+---
+
+## Communication
+
+```text
+Node.js
+     |
+     |
+     v
+
+redis-0.redis.default.svc.cluster.local
+
+     |
+     |
+     v
+
+Redis StatefulSet
+```
+
+---
+
+# Final Architecture
+
+```text
+                    Deployment
+                 (Node.js Pods)
+
+                  node-app-abc
+                  node-app-xyz
+
+                         |
+                         |
+                         v
+
+          redis-0.redis.default.svc.cluster.local
+
+                         |
+                         |
+                         v
+
+                 Headless Service
+
+                         |
+            -------------------------
+            |                       |
+            v                       v
+
+        redis-0                 redis-1
+
+      Stable DNS            Stable DNS
+
+      Stateful Pod          Stateful Pod
+```
