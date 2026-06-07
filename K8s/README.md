@@ -14968,3 +14968,910 @@ Redis StatefulSet
 
       Stateful Pod          Stateful Pod
 ```
+
+# Kubernetes RBAC (Role-Based Access Control) - Authentication and Authorization
+
+## Introduction
+
+In Kubernetes, security is handled using two major concepts:
+
+1. Authentication → Who are you?
+2. Authorization → What are you allowed to do?
+
+Kubernetes uses **RBAC (Role-Based Access Control)** to control access to cluster resources.
+
+RBAC helps administrators:
+
+* Control user permissions
+* Restrict access to namespaces
+* Secure cluster resources
+* Implement least-privilege access
+
+---
+
+# Authentication vs Authorization
+
+## Authentication (Identity Verification)
+
+Authentication answers:
+
+```text
+Who is the user?
+```
+
+Example:
+
+```text
+Username: dave
+Certificate: dave.crt
+Private Key: dave.key
+```
+
+Kubernetes verifies:
+
+```text
+Is this really Dave?
+```
+
+If verified:
+
+```text
+Authentication Successful
+```
+
+---
+
+## Authorization (Permission Verification)
+
+Authorization answers:
+
+```text
+What is Dave allowed to do?
+```
+
+Examples:
+
+```text
+Can Dave create Pods?
+Can Dave delete Deployments?
+Can Dave view Services?
+```
+
+These permissions are controlled using:
+
+* Roles
+* RoleBindings
+
+---
+
+# RBAC Architecture
+
+```text
+                User (Dave)
+                       |
+                       |
+                       v
+              Authentication
+             (Certificate Check)
+                       |
+                       v
+               Authentication
+                  Successful
+                       |
+                       v
+                  RoleBinding
+                       |
+                       v
+                     Role
+                       |
+                       v
+              Kubernetes Resources
+
+        Pods | Services | Deployments
+```
+
+---
+
+# Components of RBAC
+
+## Role
+
+A Role defines:
+
+```text
+What actions can be performed?
+```
+
+Examples:
+
+* Create Pods
+* Delete Deployments
+* List Services
+
+Think of a Role as:
+
+```text
+Permission Set
+```
+
+---
+
+## RoleBinding
+
+A RoleBinding defines:
+
+```text
+Who gets the permissions?
+```
+
+Example:
+
+```text
+Role = Developer Permissions
+
+User = Dave
+
+RoleBinding = Connects Dave to Developer Permissions
+```
+
+---
+
+# Project Goal
+
+We will:
+
+1. Create a Namespace
+2. Create a User (Dave)
+3. Generate Certificates
+4. Create a Role
+5. Create a RoleBinding
+6. Configure kubectl for Dave
+7. Test access from another server
+
+---
+
+# Step 1: Create Namespace
+
+On the Master Node:
+
+```bash
+# View namespaces
+kubectl get namespaces
+
+# Create namespace
+kubectl create namespace dev
+```
+
+Verify:
+
+```bash
+kubectl get ns
+```
+
+Output:
+
+```text
+default
+kube-system
+dev
+```
+
+---
+
+# Step 2: Create Working Directory
+
+```bash
+# Create directory
+mkdir role
+
+# Move into directory
+cd role
+```
+
+---
+
+# Step 3: Generate Private Key
+
+Generate RSA private key for user Dave.
+
+```bash
+# Generate private key
+openssl genrsa -out dave.key 2048
+```
+
+Generated file:
+
+```text
+dave.key
+```
+
+This file should be kept secure.
+
+---
+
+# Step 4: Generate Certificate Signing Request (CSR)
+
+```bash
+# Generate CSR
+openssl req -new -key dave.key -out dave.csr
+```
+
+Enter details:
+
+```text
+Organization Name : namespace
+Common Name (CN)  : dave
+```
+
+---
+
+## Understanding Common Name (CN)
+
+The Common Name becomes the Kubernetes username.
+
+Example:
+
+```text
+CN = dave
+```
+
+Kubernetes identifies the user as:
+
+```text
+dave
+```
+
+---
+
+# Step 5: Generate User Certificate
+
+Use Kubernetes CA certificate to sign Dave's certificate.
+
+```bash
+# Generate user certificate
+openssl x509 \
+-req \
+-in dave.csr \
+-CA /etc/kubernetes/pki/ca.crt \
+-CAkey /etc/kubernetes/pki/ca.key \
+-CAcreateserial \
+-out dave.crt \
+-days 500
+```
+
+Generated file:
+
+```text
+dave.crt
+```
+
+---
+
+# Authentication Flow
+
+```text
+             dave.key
+                 |
+                 |
+                 v
+
+             dave.crt
+                 |
+                 |
+                 v
+
+      Kubernetes CA Certificate
+                 |
+                 |
+                 v
+
+       Authentication Success
+```
+
+---
+
+# Authorization
+
+Now we define what Dave can do.
+
+---
+
+# Create Role
+
+## Role YAML
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+
+# Kubernetes RBAC Role
+kind: Role
+
+metadata:
+
+  # Namespace where role applies
+  namespace: dev
+
+  # Role name
+  name: dave-role
+
+rules:
+
+# Allowed API groups
+- apiGroups:
+
+  - ""
+  - apps
+
+  # Allowed resources
+  resources:
+
+  - deployments
+  - pods
+  - services
+
+  # Allowed actions
+  verbs:
+
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+```
+
+---
+
+## Understanding Role Permissions
+
+### Resources
+
+```yaml
+resources:
+- deployments
+- pods
+- services
+```
+
+Dave can access:
+
+* Deployments
+* Pods
+* Services
+
+---
+
+### Verbs
+
+```yaml
+verbs:
+- get
+- list
+- watch
+- create
+- update
+- patch
+- delete
+```
+
+Meaning:
+
+| Verb   | Description          |
+| ------ | -------------------- |
+| get    | View single resource |
+| list   | View all resources   |
+| watch  | Monitor changes      |
+| create | Create resource      |
+| update | Modify resource      |
+| patch  | Partial update       |
+| delete | Remove resource      |
+
+---
+
+# Create Role
+
+```bash
+# Create role
+kubectl apply -f role.yml
+```
+
+Verify:
+
+```bash
+kubectl get roles -n dev
+```
+
+---
+
+# Create RoleBinding
+
+RoleBinding connects:
+
+```text
+User → Role
+```
+
+---
+
+## RoleBinding YAML
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+
+# Bind Role to User
+kind: RoleBinding
+
+metadata:
+
+  # Binding name
+  name: role-test
+
+  namespace: dev
+
+subjects:
+
+# User receiving permissions
+- kind: User
+
+  # Username from certificate CN
+  name: dave
+
+  apiGroup: rbac.authorization.k8s.io
+
+roleRef:
+
+  # Reference a Role
+  kind: Role
+
+  # Role name
+  name: dave-role
+
+  apiGroup: rbac.authorization.k8s.io
+```
+
+---
+
+# Create RoleBinding
+
+```bash
+# Create rolebinding
+kubectl apply -f role-binding.yml
+```
+
+Verify:
+
+```bash
+kubectl get rolebindings -n dev
+```
+
+---
+
+# RBAC Flow
+
+```text
+               Dave
+                 |
+                 |
+                 v
+
+          RoleBinding
+                 |
+                 |
+                 v
+
+            Dave Role
+                 |
+                 |
+                 v
+
+ Deployments | Pods | Services
+```
+
+---
+
+# Configure User Credentials
+
+Add Dave's certificate to kubeconfig.
+
+```bash
+# Add user credentials
+kubectl config set-credentials dave \
+--client-certificate=/root/role/dave.crt \
+--client-key=/root/role/dave.key
+```
+
+---
+
+# Create Context
+
+A Context combines:
+
+* Cluster
+* User
+* Namespace
+
+```bash
+# Create context
+kubectl config set-context dave-context \
+--cluster=kubernetes \
+--namespace=dev \
+--user=dave
+```
+
+---
+
+# View Contexts
+
+```bash
+# List contexts
+kubectl config get-contexts
+```
+
+Example:
+
+```text
+CURRENT   NAME
+*         kubernetes-admin
+          dave-context
+```
+
+---
+
+# Worker Node Setup
+
+## Copy Kubeconfig
+
+On Master:
+
+```bash
+cat ~/.kube/config
+```
+
+Copy entire output.
+
+---
+
+## On Worker Node
+
+Create file:
+
+```bash
+vim myconf
+```
+
+Paste copied configuration.
+
+---
+
+# Copy Certificates
+
+Create directory:
+
+```bash
+mkdir role
+cd role
+```
+
+Create:
+
+```bash
+vim dave.crt
+vim dave.key
+```
+
+Paste contents from Master Node.
+
+---
+
+# Testing Access
+
+## Get Pods
+
+```bash
+kubectl get pods \
+--kubeconfig=myconf
+```
+
+---
+
+## Create Deployment
+
+```bash
+kubectl create deployment test \
+--image=httpd \
+-n dev \
+--kubeconfig=myconf
+```
+
+---
+
+## Verify Deployment
+
+```bash
+kubectl get deployment \
+--kubeconfig=myconf
+```
+
+---
+
+## Verify Pods
+
+```bash
+kubectl get pods \
+--kubeconfig=myconf
+```
+
+---
+
+# What Can Dave Do?
+
+Allowed:
+
+```text
+Create Pods
+Delete Pods
+View Pods
+
+Create Services
+Delete Services
+
+Create Deployments
+Delete Deployments
+```
+
+Inside Namespace:
+
+```text
+dev
+```
+
+---
+
+# What Can Dave NOT Do?
+
+Examples:
+
+```text
+Access kube-system namespace
+
+Create Nodes
+
+Manage Cluster Roles
+
+Modify Control Plane
+```
+
+Because permissions are limited.
+
+---
+
+# View Kubeconfig
+
+```bash
+# Display kubeconfig
+kubectl config \
+--kubeconfig=myconf view
+```
+
+---
+
+# View Contexts
+
+```bash
+kubectl config \
+--kubeconfig=myconf get-contexts
+```
+
+---
+
+# Switch Context
+
+```bash
+kubectl config \
+--kubeconfig=myconf use-context dave-context
+```
+
+---
+
+# Delete Context
+
+```bash
+kubectl config delete-context dave-context
+```
+
+---
+
+# Authentication and Authorization Diagram
+
+```text
+                      Dave
+                        |
+                        |
+             dave.crt + dave.key
+                        |
+                        |
+                        v
+
+                 Authentication
+                        |
+                        |
+                        v
+
+              Kubernetes API Server
+                        |
+                        |
+                        v
+
+                  RoleBinding
+                        |
+                        |
+                        v
+
+                     Role
+                        |
+                        |
+                        v
+
+           Pods / Services / Deployments
+```
+
+---
+
+# Role vs RoleBinding
+
+| Component   | Purpose              |
+| ----------- | -------------------- |
+| Role        | Defines permissions  |
+| RoleBinding | Assigns permissions  |
+| User        | Uses permissions     |
+| Namespace   | Scope of permissions |
+
+---
+
+# Role vs ClusterRole
+
+| Feature            | Role             | ClusterRole    |
+| ------------------ | ---------------- | -------------- |
+| Namespace Specific | Yes              | No             |
+| Cluster Wide       | No               | Yes            |
+| Used For           | Developers       | Administrators |
+| Scope              | Single Namespace | Entire Cluster |
+
+---
+
+# Interview Questions
+
+## Q1. What is RBAC?
+
+RBAC stands for:
+
+```text
+Role Based Access Control
+```
+
+Used to control user permissions.
+
+---
+
+## Q2. Difference Between Authentication and Authorization?
+
+### Authentication
+
+```text
+Who are you?
+```
+
+### Authorization
+
+```text
+What can you do?
+```
+
+---
+
+## Q3. What is a Role?
+
+A Role defines permissions inside a namespace.
+
+---
+
+## Q4. What is a RoleBinding?
+
+A RoleBinding connects a user to a Role.
+
+---
+
+## Q5. What is the Common Name (CN) used for?
+
+The CN becomes the Kubernetes username.
+
+Example:
+
+```text
+CN=dave
+```
+
+User:
+
+```text
+dave
+```
+
+---
+
+## Q6. Difference Between Role and ClusterRole?
+
+Role:
+
+```text
+Namespace Scope
+```
+
+ClusterRole:
+
+```text
+Cluster Scope
+```
+
+---
+
+# Summary
+
+## Authentication
+
+```text
+User Identity Verification
+```
+
+Uses:
+
+* Certificates
+* Keys
+
+---
+
+## Authorization
+
+```text
+Permission Verification
+```
+
+Uses:
+
+* Roles
+* RoleBindings
+
+---
+
+## RBAC Workflow
+
+```text
+User
+  |
+  v
+
+Authentication
+  |
+  v
+
+RoleBinding
+  |
+  v
+
+Role
+  |
+  v
+
+Kubernetes Resources
+```
+
+---
+
+## Key Point
+
+```text
+Authentication = Who Are You?
+
+Authorization = What Are You Allowed To Do?
+```
