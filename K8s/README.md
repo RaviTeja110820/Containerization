@@ -15875,3 +15875,870 @@ Authentication = Who Are You?
 
 Authorization = What Are You Allowed To Do?
 ```
+
+
+# Kubernetes ClusterRole and ClusterRoleBinding
+
+## Introduction
+
+In the previous RBAC example, we used:
+
+* Role
+* RoleBinding
+
+These provide permissions only within a specific namespace.
+
+Sometimes we need permissions across the entire Kubernetes cluster.
+
+For example:
+
+* Managing all namespaces
+* Viewing all Pods
+* Accessing the Kubernetes Dashboard
+* Managing cluster-wide resources
+
+For such cases, Kubernetes provides:
+
+* ClusterRole
+* ClusterRoleBinding
+
+---
+
+# Role vs ClusterRole
+
+## Role
+
+A Role provides permissions only inside a specific namespace.
+
+Example:
+
+```text
+Namespace: dev
+
+User Dave can:
+✓ Create Pods
+✓ Delete Pods
+✓ View Services
+
+Only inside dev namespace
+```
+
+---
+
+## ClusterRole
+
+A ClusterRole provides permissions across the entire cluster.
+
+Example:
+
+```text
+All Namespaces
+
+User can:
+✓ View all Pods
+✓ Create Deployments
+✓ Manage Services
+✓ Manage Nodes
+✓ Manage Namespaces
+```
+
+---
+
+# RoleBinding vs ClusterRoleBinding
+
+## RoleBinding
+
+Connects:
+
+```text
+User → Role
+```
+
+Scope:
+
+```text
+Single Namespace
+```
+
+---
+
+## ClusterRoleBinding
+
+Connects:
+
+```text
+User / ServiceAccount → ClusterRole
+```
+
+Scope:
+
+```text
+Entire Kubernetes Cluster
+```
+
+---
+
+# RBAC Architecture
+
+```text
+                    User / ServiceAccount
+                               |
+                               |
+                               v
+
+                     ClusterRoleBinding
+                               |
+                               |
+                               v
+
+                        ClusterRole
+                               |
+                               |
+                               v
+
+                     Entire Kubernetes Cluster
+```
+
+---
+
+# Why Kubernetes Dashboard Needs ClusterRole
+
+The Kubernetes Dashboard displays:
+
+* Pods
+* Deployments
+* Services
+* Nodes
+* ConfigMaps
+* Secrets
+* Namespaces
+* StatefulSets
+* DaemonSets
+
+Since it must access resources across the cluster, it requires:
+
+```text
+ClusterRole
++
+ClusterRoleBinding
+```
+
+---
+
+# Kubernetes Dashboard Architecture
+
+```text
+                     Browser
+                        |
+                        |
+                        v
+
+             Kubernetes Dashboard
+                        |
+                        |
+                        v
+
+                ServiceAccount
+                        |
+                        |
+                        v
+
+               ClusterRoleBinding
+                        |
+                        |
+                        v
+
+                 cluster-admin
+                        |
+                        |
+                        v
+
+                Kubernetes API Server
+                        |
+                        |
+                        v
+
+              All Cluster Resources
+```
+
+---
+
+# Step 1: Deploy Kubernetes Dashboard
+
+Deploy Dashboard using:
+
+```bash
+# Deploy Kubernetes Dashboard
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v2.7.0/aio/deploy/recommended.yaml
+```
+
+---
+
+# Verify Dashboard Deployment
+
+```bash
+# View Dashboard resources
+kubectl get all -n kubernetes-dashboard
+```
+
+Example Output:
+
+```text
+deployment.apps/kubernetes-dashboard
+service/kubernetes-dashboard
+pod/kubernetes-dashboard
+```
+
+---
+
+# Step 2: Expose Dashboard Using NodePort
+
+By default:
+
+```text
+Dashboard Service Type = ClusterIP
+```
+
+ClusterIP is accessible only inside the cluster.
+
+We must change it to:
+
+```text
+NodePort
+```
+
+to access from a browser.
+
+---
+
+## Edit Dashboard Service
+
+```bash
+# Edit dashboard service
+kubectl edit svc kubernetes-dashboard -n kubernetes-dashboard
+```
+
+---
+
+## Before
+
+```yaml
+spec:
+  type: ClusterIP
+```
+
+---
+
+## After
+
+```yaml
+spec:
+  # Expose dashboard outside cluster
+  type: NodePort
+```
+
+Save and exit.
+
+---
+
+# Verify NodePort
+
+```bash
+# Verify service
+kubectl get svc -n kubernetes-dashboard -o wide
+```
+
+Example:
+
+```text
+NAME                   TYPE       PORT(S)
+kubernetes-dashboard   NodePort   443:30189/TCP
+```
+
+---
+
+# Dashboard Access URL
+
+Format:
+
+```text
+https://<NODE-IP>:<NODEPORT>
+```
+
+Example:
+
+```text
+https://35.239.229.82:30189
+```
+
+---
+
+# Browser Warning
+
+Since Dashboard uses a self-signed certificate:
+
+```text
+Privacy Warning
+```
+
+may appear.
+
+Click:
+
+```text
+Advanced
+   ↓
+Accept Risk and Continue
+```
+
+---
+
+# Service Accounts
+
+## What is a ServiceAccount?
+
+A ServiceAccount is a Kubernetes identity used by:
+
+* Pods
+* Applications
+* Dashboard
+* Automation Tools
+
+Instead of human users.
+
+Think of it as:
+
+```text
+User Account for Applications
+```
+
+---
+
+# Create ServiceAccount
+
+## serviceaccount.yml
+
+```yaml
+apiVersion: v1
+
+# Kubernetes Service Account
+kind: ServiceAccount
+
+metadata:
+
+  # ServiceAccount name
+  name: sandry
+
+  # Dashboard namespace
+  namespace: kubernetes-dashboard
+```
+
+---
+
+## Create ServiceAccount
+
+```bash
+# Create ServiceAccount
+kubectl apply -f serviceaccount.yml
+```
+
+Verify:
+
+```bash
+kubectl get sa -n kubernetes-dashboard
+```
+
+---
+
+# Why ServiceAccount Needs Permissions
+
+Currently:
+
+```text
+sandry
+```
+
+has no permissions.
+
+If it tries to access Dashboard:
+
+```text
+Access Denied
+```
+
+We need:
+
+```text
+ClusterRoleBinding
+```
+
+---
+
+# ClusterRoleBinding
+
+## Purpose
+
+Connect:
+
+```text
+ServiceAccount
+      ↓
+ClusterRole
+```
+
+---
+
+# clusterrole-sa.yml
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+
+# Cluster-wide binding
+kind: ClusterRoleBinding
+
+metadata:
+
+  # Binding name
+  name: admin-user
+
+roleRef:
+
+  # RBAC API group
+  apiGroup: rbac.authorization.k8s.io
+
+  # Bind to ClusterRole
+  kind: ClusterRole
+
+  # Built-in administrator role
+  name: cluster-admin
+
+subjects:
+
+# ServiceAccount receiving permissions
+- kind: ServiceAccount
+
+  # ServiceAccount name
+  name: sandry
+
+  # Namespace of ServiceAccount
+  namespace: kubernetes-dashboard
+```
+
+---
+
+# Understanding cluster-admin
+
+Kubernetes provides a built-in ClusterRole:
+
+```text
+cluster-admin
+```
+
+This role has:
+
+```text
+Full Cluster Permissions
+```
+
+Including:
+
+* Pods
+* Services
+* Deployments
+* Nodes
+* Namespaces
+* Secrets
+* ConfigMaps
+* Storage
+* RBAC
+
+Essentially:
+
+```text
+Administrator Access
+```
+
+---
+
+# Create ClusterRoleBinding
+
+```bash
+# Create ClusterRoleBinding
+kubectl apply -f clusterrole-sa.yml
+```
+
+Verify:
+
+```bash
+kubectl get clusterrolebinding
+```
+
+---
+
+# RBAC Flow
+
+```text
+ServiceAccount (sandry)
+           |
+           |
+           v
+
+ ClusterRoleBinding
+           |
+           |
+           v
+
+    cluster-admin
+           |
+           |
+           v
+
+ Full Cluster Access
+```
+
+---
+
+# Authentication Using Tokens
+
+Dashboard login requires:
+
+```text
+Bearer Token
+```
+
+The token is stored inside a Secret.
+
+---
+
+# Create ServiceAccount Token Secret
+
+## secret-sa.yml
+
+```yaml
+apiVersion: v1
+
+# Secret resource
+kind: Secret
+
+# ServiceAccount token type
+type: kubernetes.io/service-account-token
+
+metadata:
+
+  # Secret name
+  name: mysecret-sa
+
+  namespace: kubernetes-dashboard
+
+  annotations:
+
+    # Attach token to ServiceAccount
+    kubernetes.io/service-account.name: sandry
+```
+
+---
+
+# Create Secret
+
+```bash
+# Create secret
+kubectl apply -f secret-sa.yml
+```
+
+---
+
+# Verify Secret
+
+```bash
+# View secret
+kubectl describe secret mysecret-sa \
+-n kubernetes-dashboard
+```
+
+Output:
+
+```text
+Name: mysecret-sa
+
+token:
+eyJhbGciOiJSUzI1NiIs...
+```
+
+---
+
+# Copy the Token
+
+Copy:
+
+```text
+token:
+xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+This is the Dashboard login token.
+
+---
+
+# Login to Dashboard
+
+Open:
+
+```text
+https://<NODE-IP>:<NODEPORT>
+```
+
+Example:
+
+```text
+https://35.239.229.82:30189
+```
+
+Select:
+
+```text
+Token
+```
+
+Paste:
+
+```text
+Bearer Token
+```
+
+Click:
+
+```text
+Sign In
+```
+
+---
+
+# Dashboard Login Flow
+
+```text
+             Browser
+                |
+                |
+                v
+
+        Dashboard Login Page
+                |
+                |
+                v
+
+           Token
+                |
+                |
+                v
+
+       ServiceAccount
+          (sandry)
+                |
+                |
+                v
+
+      ClusterRoleBinding
+                |
+                |
+                v
+
+         cluster-admin
+                |
+                |
+                v
+
+      Kubernetes API Server
+                |
+                |
+                v
+
+      Dashboard Access Granted
+```
+
+---
+
+# Verify Permissions
+
+After login you can view:
+
+```text
+✓ Pods
+✓ Services
+✓ Deployments
+✓ StatefulSets
+✓ DaemonSets
+✓ ConfigMaps
+✓ Secrets
+✓ Nodes
+✓ Namespaces
+✓ Persistent Volumes
+✓ Storage Classes
+```
+
+---
+
+# ClusterRole vs ClusterRoleBinding
+
+| Component          | Purpose                          |
+| ------------------ | -------------------------------- |
+| ClusterRole        | Defines cluster-wide permissions |
+| ClusterRoleBinding | Assigns those permissions        |
+| ServiceAccount     | Identity used by Dashboard       |
+| cluster-admin      | Full administrator access        |
+
+---
+
+# Role vs ClusterRole
+
+| Feature          | Role             | ClusterRole        |
+| ---------------- | ---------------- | ------------------ |
+| Namespace Scoped | Yes              | No                 |
+| Cluster Wide     | No               | Yes                |
+| Used With        | RoleBinding      | ClusterRoleBinding |
+| Access Scope     | Single Namespace | Entire Cluster     |
+
+---
+
+# Security Warning
+
+The following configuration:
+
+```yaml
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+```
+
+gives:
+
+```text
+Full Administrator Access
+```
+
+This is acceptable for:
+
+* Labs
+* Learning
+* Development
+
+Not recommended for:
+
+* Production environments
+
+Instead create custom ClusterRoles with limited permissions.
+
+---
+
+# Interview Questions
+
+## Q1. What is a ClusterRole?
+
+A ClusterRole defines permissions across the entire Kubernetes cluster.
+
+---
+
+## Q2. What is a ClusterRoleBinding?
+
+A ClusterRoleBinding assigns a ClusterRole to a User, Group, or ServiceAccount.
+
+---
+
+## Q3. Why does Kubernetes Dashboard require ClusterRoleBinding?
+
+Because it needs access to resources across multiple namespaces.
+
+---
+
+## Q4. What is cluster-admin?
+
+A built-in ClusterRole that provides full administrator privileges.
+
+---
+
+## Q5. What is a ServiceAccount?
+
+A Kubernetes identity used by applications and Pods instead of human users.
+
+---
+
+## Q6. How do we login to Kubernetes Dashboard?
+
+Using:
+
+```text
+Bearer Token
+```
+
+generated from a ServiceAccount Secret.
+
+---
+
+# Summary
+
+## ClusterRole
+
+Defines:
+
+```text
+What actions are allowed?
+```
+
+Cluster-wide.
+
+---
+
+## ClusterRoleBinding
+
+Defines:
+
+```text
+Who receives those permissions?
+```
+
+---
+
+## ServiceAccount
+
+Used by:
+
+```text
+Applications
+Pods
+Dashboard
+Automation Tools
+```
+
+---
+
+## Dashboard Authentication Flow
+
+```text
+ServiceAccount
+      |
+      v
+ClusterRoleBinding
+      |
+      v
+cluster-admin
+      |
+      v
+Bearer Token
+      |
+      v
+Dashboard Login
+```
+
+---
+
+## Key Point
+
+```text
+Role            → Namespace Level Access
+
+ClusterRole     → Cluster Level Access
+
+RoleBinding     → Assign Role
+
+ClusterRoleBinding → Assign ClusterRole
+```
+
