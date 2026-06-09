@@ -14968,7 +14968,7 @@ Redis StatefulSet
 
       Stateful Pod          Stateful Pod
 ```
-
+-------------------------------------------------------------------------------------------
 # Kubernetes RBAC (Role-Based Access Control) - Authentication and Authorization
 
 ## Introduction
@@ -16742,3 +16742,957 @@ RoleBinding     → Assign Role
 ClusterRoleBinding → Assign ClusterRole
 ```
 
+# Helm - Kubernetes Package Manager
+
+## What is Helm?
+
+Helm is the **package manager for Kubernetes**.
+
+Just like:
+
+* APT → Ubuntu packages
+* YUM → RHEL packages
+* NPM → NodeJS packages
+
+Helm helps manage Kubernetes applications.
+
+Helm automates:
+
+* Creation
+* Packaging
+* Configuration
+* Deployment
+* Upgrades
+* Rollbacks
+
+of Kubernetes applications.
+
+---
+
+## Why Do We Need Helm?
+
+In Kubernetes, applications are usually deployed using multiple YAML files:
+
+```text
+deployment.yaml
+service.yaml
+configmap.yaml
+secret.yaml
+ingress.yaml
+persistentvolume.yaml
+```
+
+As applications grow:
+
+* More microservices are added
+* More YAML files are created
+* Managing versions becomes difficult
+* Updating configurations becomes complex
+
+Without Helm:
+
+```text
+Application
+   |
+   +--> deployment.yaml
+   +--> service.yaml
+   +--> ingress.yaml
+   +--> configmap.yaml
+   +--> secret.yaml
+```
+
+Managing all these files manually becomes difficult.
+
+---
+
+## How Helm Solves This Problem
+
+Helm combines all Kubernetes resources into a reusable package called a:
+
+```text
+Helm Chart
+```
+
+Instead of managing multiple YAML files:
+
+```text
+Application
+    |
+    v
+Helm Chart
+```
+
+A single chart can deploy the entire application.
+
+---
+
+# Helm Architecture
+
+```text
+                Developer
+                     |
+                     |
+                     v
+
+                Helm Chart
+                     |
+                     |
+                     v
+
+                Helm Release
+                     |
+                     |
+                     v
+
+             Kubernetes Cluster
+                     |
+      ----------------------------------
+      |              |                 |
+      v              v                 v
+
+ Deployment      Service         ConfigMap
+```
+
+---
+
+# Important Helm Components
+
+## Helm Chart
+
+A Helm Chart is a package that contains:
+
+* Deployments
+* Services
+* ConfigMaps
+* Secrets
+* Ingress
+* PVCs
+
+Everything required to run an application.
+
+Think of it as:
+
+```text
+Application Template
+```
+
+---
+
+## Helm Release
+
+A running instance of a Helm Chart.
+
+Example:
+
+```bash
+helm install myapp nginx-chart
+```
+
+Creates:
+
+```text
+Release Name = myapp
+```
+
+You can install the same chart multiple times.
+
+Example:
+
+```bash
+helm install mysql-dev mysql-chart
+
+helm install mysql-prod mysql-chart
+```
+
+Result:
+
+```text
+mysql-dev  --> Release 1
+
+mysql-prod --> Release 2
+```
+
+---
+
+## Helm Repository
+
+A repository stores Helm Charts.
+
+Examples:
+
+* Bitnami Repository
+* ArtifactHub
+* Internal Company Repository
+
+Think of it like:
+
+```text
+Docker Hub for Helm Charts
+```
+
+---
+
+# Helm Workflow
+
+```text
+          Helm Repository
+                  |
+                  |
+                  v
+
+             Helm Chart
+                  |
+                  |
+                  v
+
+            helm install
+                  |
+                  |
+                  v
+
+             Helm Release
+                  |
+                  |
+                  v
+
+         Kubernetes Resources
+```
+
+---
+
+# Installing Helm
+
+## Download Helm
+
+```bash
+# Download Helm installation script
+curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get-helm-3 > get_helm.sh
+```
+
+---
+
+## Make Script Executable
+
+```bash
+# Give execute permission
+chmod 700 get_helm.sh
+```
+
+---
+
+## Install Helm
+
+```bash
+# Install Helm
+./get_helm.sh
+```
+
+---
+
+## Verify Installation
+
+```bash
+# Check Helm version
+helm version
+```
+
+Example:
+
+```text
+version.BuildInfo{
+Version:"v3.x.x"
+}
+```
+
+---
+
+# Creating a Helm Chart
+
+## Create Chart
+
+```bash
+# Create Helm chart
+helm create webapp
+```
+
+---
+
+## Verify Chart Structure
+
+```bash
+ls -al webapp
+```
+
+Generated structure:
+
+```text
+webapp/
+
+├── Chart.yaml
+├── values.yaml
+├── charts/
+└── templates/
+```
+
+---
+
+# Understanding Helm Chart Structure
+
+## Chart.yaml
+
+Contains chart metadata.
+
+Example:
+
+```yaml
+# Chart API version
+apiVersion: v2
+
+# Chart name
+name: webapp
+
+# Chart description
+description: Sample Helm Chart
+
+# Chart version
+version: 0.1.0
+
+# Application version
+appVersion: "1.0"
+```
+
+---
+
+## values.yaml
+
+Stores configurable values.
+
+Example:
+
+```yaml
+# Number of replicas
+replicaCount: 3
+
+image:
+
+  # Docker image repository
+  repository: leaddevops/kubeserve
+
+  # Docker image tag
+  tag: "v2"
+
+service:
+
+  # Service type
+  type: ClusterIP
+
+  # Service port
+  port: 80
+
+  # Container port
+  targetPort: 80
+```
+
+---
+
+## templates/
+
+Contains Kubernetes YAML templates.
+
+Example:
+
+```text
+deployment.yaml
+service.yaml
+ingress.yaml
+```
+
+---
+
+# Cleaning Default Templates
+
+Move into templates directory:
+
+```bash
+cd webapp/templates
+```
+
+List files:
+
+```bash
+ls -al
+```
+
+Remove unwanted files:
+
+```bash
+# Remove default templates
+rm -rf *.yaml NOTES.txt tests
+```
+
+---
+
+# Creating Deployment Template
+
+## deployment.yaml
+
+```yaml
+apiVersion: apps/v1
+
+# Kubernetes Deployment
+kind: Deployment
+
+metadata:
+
+  # Deployment name
+  name: mydeploy-helm
+
+spec:
+
+  # Replica count from values.yaml
+  replicas: {{ .Values.replicaCount }}
+
+  selector:
+
+    matchLabels:
+      app: kubeserve
+
+  template:
+
+    metadata:
+
+      labels:
+        app: kubeserve
+
+    spec:
+
+      containers:
+
+      - name: c1
+
+        # Image from values.yaml
+        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+```
+
+---
+
+## Understanding Helm Variables
+
+Helm uses Go Template syntax.
+
+Example:
+
+```yaml
+{{ .Values.replicaCount }}
+```
+
+Reads:
+
+```yaml
+replicaCount: 3
+```
+
+from values.yaml
+
+---
+
+Example:
+
+```yaml
+{{ .Values.image.repository }}
+```
+
+Reads:
+
+```yaml
+repository: leaddevops/kubeserve
+```
+
+---
+
+# Creating Service Template
+
+## service.yaml
+
+```yaml
+apiVersion: v1
+
+# Kubernetes Service
+kind: Service
+
+metadata:
+
+  # Service name
+  name: mysvc
+
+spec:
+
+  # Service type from values.yaml
+  type: {{ .Values.service.type }}
+
+  ports:
+
+  - targetPort: {{ .Values.service.targetPort }}
+
+    port: {{ .Values.service.port }}
+
+  selector:
+
+    app: kubeserve
+```
+
+---
+
+# Deploying Helm Chart
+
+Move outside chart directory:
+
+```bash
+cd
+```
+
+Install chart:
+
+```bash
+# Install chart
+helm install release-chart-1 webapp
+```
+
+---
+
+# Verify Resources
+
+```bash
+# View resources
+kubectl get all
+```
+
+Expected:
+
+```text
+Deployment
+Pods
+Service
+ReplicaSet
+```
+
+---
+
+# Verify Helm Release
+
+```bash
+# List releases
+helm list
+```
+
+Example:
+
+```text
+NAME              STATUS
+release-chart-1   deployed
+```
+
+---
+
+# Helm Release Concept
+
+```text
+Helm Chart
+      |
+      |
+      v
+
+release-chart-1
+
+      |
+      |
+      v
+
+Deployment
+Service
+Pods
+```
+
+---
+
+# Uninstall Release
+
+```bash
+# Remove release
+helm uninstall release-chart-1
+```
+
+This deletes all resources created by Helm.
+
+---
+
+# Helm Validation Commands
+
+## Dry Run
+
+Simulate deployment.
+
+```bash
+# Validate deployment
+helm install webapp-release2 webapp --dry-run
+```
+
+---
+
+## Render Templates
+
+Generate YAML without deploying.
+
+```bash
+# Render YAML
+helm template webapp-release2 webapp
+```
+
+---
+
+## Lint Chart
+
+Check chart syntax.
+
+```bash
+# Validate chart
+helm lint webapp
+```
+
+---
+
+# Helm Upgrade
+
+Update an existing release.
+
+```bash
+# Upgrade release
+helm upgrade myapp ./webapp
+```
+
+---
+
+# Upgrade with Values File
+
+```bash
+# Upgrade using values file
+helm upgrade myapp ./webapp \
+-f values.yaml
+```
+
+---
+
+# Override Values at Runtime
+
+```bash
+# Override image tag
+helm upgrade myapp ./webapp \
+--set image.tag=v3
+```
+
+---
+
+# Show Default Values
+
+```bash
+# Display values.yaml
+helm show values webapp
+```
+
+---
+
+# Rollback Release
+
+Suppose deployment fails after upgrade.
+
+View history:
+
+```bash
+# Show revisions
+helm history myapp
+```
+
+Example:
+
+```text
+REVISION
+1
+2
+3
+```
+
+Rollback:
+
+```bash
+# Rollback to revision 2
+helm rollback myapp 2
+```
+
+---
+
+# Helm Commands Cheat Sheet
+
+## Repository Commands
+
+```bash
+# Add repository
+helm repo add <name> <url>
+
+# Update repositories
+helm repo update
+
+# List repositories
+helm repo list
+```
+
+---
+
+## Installation Commands
+
+```bash
+# Install chart
+helm install <release> <chart>
+
+# Upgrade chart
+helm upgrade <release> <chart>
+
+# Install or upgrade
+helm upgrade --install <release> <chart>
+```
+
+---
+
+## Release Commands
+
+```bash
+# List releases
+helm list
+
+# Show status
+helm status <release>
+
+# Show release history
+helm history <release>
+
+# Remove release
+helm uninstall <release>
+```
+
+---
+
+## Debug Commands
+
+```bash
+# View rendered YAML
+helm template
+
+# Lint chart
+helm lint
+
+# Dry run
+helm install --dry-run
+```
+
+---
+
+# Helm Chart Lifecycle
+
+```text
+Create Chart
+     |
+     v
+
+Edit values.yaml
+     |
+     v
+
+Create Templates
+     |
+     v
+
+helm lint
+     |
+     v
+
+helm install
+     |
+     v
+
+Release Created
+     |
+     v
+
+helm upgrade
+     |
+     v
+
+helm rollback
+```
+
+---
+
+# GitHub Integration
+
+Helm Charts should be stored in Git.
+
+Example:
+
+```bash
+# Add files
+git add .
+
+# Commit changes
+git commit -m "Added Helm Chart"
+
+# Push to GitHub
+git push origin master
+```
+
+Using Personal Access Token:
+
+```text
+Username : GitHub Username
+
+Password : Personal Access Token
+```
+
+---
+
+# Helm vs Kubernetes YAML
+
+| Feature             | Plain YAML | Helm      |
+| ------------------- | ---------- | --------- |
+| Reusable            | No         | Yes       |
+| Versioning          | Manual     | Built-in  |
+| Rollback            | Difficult  | Easy      |
+| Parameterization    | No         | Yes       |
+| Environment Support | Limited    | Excellent |
+| Upgrade Management  | Manual     | Automatic |
+
+---
+
+# Interview Questions
+
+## Q1. What is Helm?
+
+Helm is the package manager for Kubernetes.
+
+---
+
+## Q2. What is a Helm Chart?
+
+A Helm Chart is a package containing Kubernetes resources.
+
+---
+
+## Q3. What is a Helm Release?
+
+A deployed instance of a Helm Chart.
+
+---
+
+## Q4. What is values.yaml?
+
+A file used to store configurable values.
+
+---
+
+## Q5. What command installs a Helm Chart?
+
+```bash
+helm install <release-name> <chart>
+```
+
+---
+
+## Q6. What command upgrades a release?
+
+```bash
+helm upgrade <release-name> <chart>
+```
+
+---
+
+## Q7. What command rolls back a release?
+
+```bash
+helm rollback <release-name> <revision>
+```
+
+---
+
+# Summary
+
+## Helm
+
+```text
+Package Manager for Kubernetes
+```
+
+---
+
+## Helm Chart
+
+```text
+Application Package
+```
+
+---
+
+## Helm Release
+
+```text
+Running Instance of a Chart
+```
+
+---
+
+## values.yaml
+
+```text
+Stores Configurable Values
+```
+
+---
+
+## Key Benefit
+
+```text
+Write Once
+
+Deploy Anywhere
+
+Manage Easily
+
+Rollback Quickly
+```
+
+---
+
+# Final Architecture
+
+```text
+                  Helm Repository
+                          |
+                          |
+                          v
+
+                     Helm Chart
+                          |
+                          |
+                          v
+
+                    Helm Release
+                          |
+        -----------------------------------
+        |                |                |
+        v                v                v
+
+   Deployment        Service       ConfigMap
+
+                          |
+                          |
+                          v
+
+                Kubernetes Cluster
+```
