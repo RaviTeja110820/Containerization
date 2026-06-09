@@ -17696,3 +17696,976 @@ Rollback Quickly
 
                 Kubernetes Cluster
 ```
+
+# Kubernetes Probes
+
+## Introduction
+
+Kubernetes provides a **Self-Healing** feature that automatically recovers failed containers and applications.
+
+### What is Self-Healing?
+
+A Pod's responsibility is:
+
+* Start the container
+* Monitor the container
+* Ensure the container is always running
+
+If a container exits or crashes:
+
+```text
+Container Crashed
+        |
+        v
+      Pod
+        |
+        v
+Container Restarted
+```
+
+Kubernetes automatically restarts the container based on the Pod's restart policy.
+
+---
+
+# Why Do We Need Probes?
+
+Sometimes a container may be:
+
+* Running but not responding
+* Running but not ready to serve traffic
+* Taking a long time to start
+
+Example:
+
+```text
+Container Status = Running
+
+But
+
+Application Status = Not Working
+```
+
+Kubernetes cannot determine this by checking container status alone.
+
+To solve this problem, Kubernetes uses:
+
+```text
+Probes
+```
+
+Probes check the health of applications running inside containers.
+
+---
+
+# Types of Probes
+
+Kubernetes provides three types of probes:
+
+1. Startup Probe
+2. Liveness Probe
+3. Readiness Probe
+
+---
+
+# Probe Architecture
+
+```text
+                 Kubernetes
+                      |
+                      |
+                      v
+
+              +----------------+
+              |     Pod        |
+              +----------------+
+                      |
+                      |
+                      v
+
+              +----------------+
+              |   Container    |
+              +----------------+
+                      |
+          -------------------------
+          |           |           |
+          v           v           v
+
+     Startup     Liveness    Readiness
+      Probe       Probe       Probe
+```
+
+---
+
+# 1. Startup Probe
+
+## What is a Startup Probe?
+
+A Startup Probe checks whether the application has started successfully.
+
+Some applications:
+
+* Load huge configuration files
+* Initialize databases
+* Download dependencies
+* Take several minutes to start
+
+Example:
+
+```text
+Application Startup Time
+
+Normal App  -> 5 Seconds
+
+Legacy App  -> 2 Minutes
+```
+
+Without Startup Probe:
+
+```text
+Kubernetes thinks app is dead
+```
+
+and restarts it repeatedly.
+
+---
+
+## How Startup Probe Works
+
+```text
+Container Started
+        |
+        v
+
+Startup Probe Runs
+        |
+        |
+    Success?
+    /      \
+   Yes      No
+    |        |
+    v        v
+
+Continue   Restart Container
+```
+
+---
+
+## Important Points
+
+### Startup Probe Runs Only Once
+
+```text
+Container Starts
+       |
+       v
+
+Startup Probe
+
+       |
+       v
+
+Success
+
+       |
+       v
+
+Never Runs Again
+```
+
+---
+
+## Use Cases
+
+Use Startup Probe when:
+
+* Spring Boot applications
+* Java applications
+* Legacy applications
+* Applications with long startup time
+
+---
+
+# 2. Liveness Probe
+
+## What is a Liveness Probe?
+
+A Liveness Probe checks:
+
+```text
+Is the application still alive?
+```
+
+Even if the container is running, the application inside may be:
+
+* Frozen
+* Hung
+* Deadlocked
+* Unresponsive
+
+---
+
+## Example
+
+Suppose:
+
+```text
+Nginx Container = Running
+
+But
+
+Nginx Service = Not Responding
+```
+
+Container Status:
+
+```text
+Running
+```
+
+Application Status:
+
+```text
+Dead
+```
+
+---
+
+## How Liveness Probe Works
+
+```text
+Liveness Probe
+       |
+       v
+
+Application Responding?
+      /      \
+    Yes       No
+     |         |
+     v         v
+
+ Continue   Restart Container
+```
+
+---
+
+## Key Purpose
+
+Liveness Probe:
+
+```text
+Detect Dead Application
+```
+
+and
+
+```text
+Restart Container Automatically
+```
+
+---
+
+## Important Points
+
+If Liveness Probe fails:
+
+```text
+Container Terminated
+        |
+        v
+New Container Created
+```
+
+---
+
+## Common Use Cases
+
+* Application hangs
+* Memory deadlock
+* Infinite loop
+* Application crash
+
+---
+
+# 3. Readiness Probe
+
+## What is a Readiness Probe?
+
+Readiness Probe checks:
+
+```text
+Can this application serve requests?
+```
+
+---
+
+## Real Example
+
+A Spring Boot application starts.
+
+However:
+
+```text
+Application Started
+
+BUT
+
+Database Connection Not Ready
+```
+
+If traffic is sent immediately:
+
+```text
+Application Returns Error
+```
+
+---
+
+## How Readiness Probe Works
+
+```text
+Readiness Probe
+       |
+       v
+
+Application Ready?
+      /      \
+    Yes       No
+     |         |
+     v         v
+
+Receive      Remove Pod
+Traffic      From Service
+```
+
+---
+
+## Important Point
+
+When Readiness Probe fails:
+
+```text
+Pod IS NOT Restarted
+```
+
+Instead:
+
+```text
+Pod Removed From Service Endpoints
+```
+
+Meaning:
+
+```text
+No Traffic Sent To Pod
+```
+
+---
+
+## Readiness Flow
+
+```text
+Application Not Ready
+          |
+          v
+
+Readiness Probe Failed
+          |
+          v
+
+Service Removes Pod
+          |
+          v
+
+No Traffic
+```
+
+---
+
+# Liveness vs Readiness
+
+| Feature                  | Liveness Probe     | Readiness Probe    |
+| ------------------------ | ------------------ | ------------------ |
+| Checks                   | Application Alive? | Application Ready? |
+| Failure Action           | Restart Container  | Stop Traffic       |
+| Container Restarted?     | Yes                | No                 |
+| Service Traffic Allowed? | No                 | No                 |
+| Runs Continuously?       | Yes                | Yes                |
+
+---
+
+# Startup vs Liveness vs Readiness
+
+| Probe     | Purpose                  |
+| --------- | ------------------------ |
+| Startup   | Check startup completion |
+| Liveness  | Check app health         |
+| Readiness | Check traffic readiness  |
+
+---
+
+# Probes Demo
+
+## Deployment YAML
+
+File:
+
+```bash
+# Create deployment file
+vim probesdemo.yml
+```
+
+---
+
+## Deployment Configuration
+
+```yaml
+apiVersion: apps/v1
+
+# Deployment object
+kind: Deployment
+
+metadata:
+
+  # Deployment name
+  name: probe-demo
+
+spec:
+
+  # Create one Pod
+  replicas: 1
+
+  selector:
+
+    matchLabels:
+      app: probe-demo
+
+  template:
+
+    metadata:
+
+      labels:
+        app: probe-demo
+
+    spec:
+
+      containers:
+
+      - name: app
+
+        # Nginx image
+        image: nginx
+
+        ports:
+
+        # Application port
+        - containerPort: 80
+
+        #################################################
+        # Startup Probe
+        #################################################
+
+        startupProbe:
+
+          httpGet:
+
+            # Check root URL
+            path: /
+
+            # Port to check
+            port: 80
+
+          # Allow 30 failures
+          failureThreshold: 30
+
+          # Check every 5 seconds
+          periodSeconds: 5
+
+        #################################################
+        # Liveness Probe
+        #################################################
+
+        livenessProbe:
+
+          httpGet:
+
+            # Check application URL
+            path: /
+
+            port: 80
+
+          # Start immediately
+          initialDelaySeconds: 0
+
+          # Check every 10 seconds
+          periodSeconds: 10
+
+          # Restart after 3 failures
+          failureThreshold: 3
+
+        #################################################
+        # Readiness Probe
+        #################################################
+
+        readinessProbe:
+
+          httpGet:
+
+            # Check application URL
+            path: /
+
+            port: 80
+
+          # Start immediately
+          initialDelaySeconds: 0
+
+          # Check every 5 seconds
+          periodSeconds: 5
+
+          # Mark unready after 3 failures
+          failureThreshold: 3
+```
+
+---
+
+# Service YAML
+
+Create file:
+
+```bash
+# Create service file
+vim service.yml
+```
+
+---
+
+## Service Configuration
+
+```yaml
+apiVersion: v1
+
+# Service object
+kind: Service
+
+metadata:
+
+  # Service name
+  name: service3
+
+spec:
+
+  # Expose application externally
+  type: NodePort
+
+  selector:
+
+    # Select probe-demo Pod
+    app: probe-demo
+
+  ports:
+
+  - targetPort: 80
+
+    port: 80
+```
+
+---
+
+# Deploy Resources
+
+Create Deployment:
+
+```bash
+kubectl apply -f probesdemo.yml
+```
+
+Create Service:
+
+```bash
+kubectl apply -f service.yml
+```
+
+---
+
+# Monitor Pod
+
+Watch Pod status continuously:
+
+```bash
+watch kubectl get pods
+```
+
+Example:
+
+```text
+NAME                          READY   STATUS
+probe-demo-abc123             1/1     Running
+```
+
+---
+
+# Testing Liveness Probe
+
+## Kill Main Process
+
+Execute:
+
+```bash
+kubectl exec -it <pod-name> -- kill 1
+```
+
+---
+
+## What Happens?
+
+```text
+Nginx Process Killed
+         |
+         v
+
+Liveness Probe Fails
+         |
+         v
+
+Container Restarted
+```
+
+---
+
+## Verify
+
+Watch:
+
+```bash
+watch kubectl get pods
+```
+
+You will notice:
+
+```text
+RESTARTS = 1
+```
+
+---
+
+# Testing Readiness Probe
+
+Enter Pod:
+
+```bash
+kubectl exec -it <pod-name> -- bash
+```
+
+---
+
+## Remove Nginx Homepage
+
+```bash
+mv /usr/share/nginx/html/index.html /tmp
+```
+
+---
+
+## What Happens?
+
+Nginx now returns:
+
+```text
+404 Not Found
+```
+
+Probe Result:
+
+```text
+Readiness Probe Failed
+```
+
+---
+
+## Kubernetes Response
+
+```text
+Readiness Probe Failed
+          |
+          v
+
+Pod Removed From Service
+          |
+          v
+
+No Traffic Sent
+```
+
+---
+
+## Eventually
+
+Liveness Probe also starts failing:
+
+```text
+Liveness Probe Failed
+          |
+          v
+
+Container Restarted
+```
+
+---
+
+# Complete Flow
+
+```text
+Application Running
+          |
+          |
+          v
+
+   Readiness Probe
+          |
+          |
+      Success?
+      /      \
+    Yes       No
+     |         |
+     v         v
+
+Receive     Remove Pod
+Traffic     From Service
+
+                 |
+                 |
+                 v
+
+          Liveness Probe
+
+                 |
+                 |
+             Success?
+             /      \
+           Yes       No
+            |         |
+            v         v
+
+        Continue   Restart
+                   Container
+```
+
+---
+
+# Probe Parameters Explained
+
+## initialDelaySeconds
+
+Wait before starting the probe.
+
+Example:
+
+```yaml
+initialDelaySeconds: 30
+```
+
+Meaning:
+
+```text
+Wait 30 seconds
+Then start checking
+```
+
+---
+
+## periodSeconds
+
+How often probe runs.
+
+Example:
+
+```yaml
+periodSeconds: 10
+```
+
+Meaning:
+
+```text
+Run every 10 seconds
+```
+
+---
+
+## failureThreshold
+
+Number of failures allowed.
+
+Example:
+
+```yaml
+failureThreshold: 3
+```
+
+Meaning:
+
+```text
+Fail 3 Times
+
+Then Take Action
+```
+
+---
+
+# Real-World Example
+
+## Startup Probe
+
+```text
+Spring Boot Application
+
+Startup Time = 2 Minutes
+```
+
+Use:
+
+```text
+Startup Probe
+```
+
+---
+
+## Readiness Probe
+
+```text
+Application Waiting For Database
+```
+
+Use:
+
+```text
+Readiness Probe
+```
+
+---
+
+## Liveness Probe
+
+```text
+Application Frozen
+```
+
+Use:
+
+```text
+Liveness Probe
+```
+
+---
+
+# Interview Questions
+
+## Q1. Why are probes used?
+
+To monitor application health inside containers.
+
+---
+
+## Q2. What happens when Liveness Probe fails?
+
+```text
+Container Restarted
+```
+
+---
+
+## Q3. What happens when Readiness Probe fails?
+
+```text
+Pod Removed From Service
+```
+
+No traffic is sent.
+
+---
+
+## Q4. Does Readiness Probe restart containers?
+
+```text
+No
+```
+
+---
+
+## Q5. Does Startup Probe run continuously?
+
+```text
+No
+```
+
+It runs only during startup.
+
+---
+
+## Q6. Which probe should be used for slow-starting applications?
+
+```text
+Startup Probe
+```
+
+---
+
+# Summary
+
+## Startup Probe
+
+```text
+Checks Startup Completion
+
+Runs Once
+```
+
+---
+
+## Readiness Probe
+
+```text
+Checks Traffic Readiness
+
+Removes Pod From Service
+```
+
+---
+
+## Liveness Probe
+
+```text
+Checks Application Health
+
+Restarts Container
+```
+
+---
+
+# Final Architecture Diagram
+
+```text
+                     Kubernetes
+                          |
+                          |
+                          v
+
+                     Pod/Container
+                          |
+      --------------------------------------
+      |                  |                 |
+      v                  v                 v
+
+ Startup Probe     Readiness Probe    Liveness Probe
+
+      |                  |                 |
+      |                  |                 |
+      v                  v                 v
+
+ App Started?     Ready For Traffic?   App Alive?
+
+      |                  |                 |
+      |                  |                 |
+      v                  v                 v
+
+ Continue       Add/Remove From Service   Restart
+                                         Container
+```
