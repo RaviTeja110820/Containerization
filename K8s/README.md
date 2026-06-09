@@ -1053,6 +1053,1766 @@ spec       → HOW it should run
 ```text
 A Pod YAML defines API version, object type, metadata, and desired state to run containers in Kubernetes.
 ```
+# Kubernetes Init Containers
+
+## Introduction
+
+In Kubernetes, a Pod can contain:
+
+* One or more Application Containers
+* One or more Init Containers
+
+Normally, when a Pod starts, Kubernetes launches the application containers immediately.
+
+However, sometimes an application requires some setup work before it can start, such as:
+
+* Waiting for a database
+* Creating configuration files
+* Downloading data
+* Verifying network connectivity
+* Running initialization scripts
+
+For these tasks, Kubernetes provides:
+
+```text
+Init Containers
+```
+
+---
+
+# What is an Init Container?
+
+An Init Container is a special container that runs **before** the application containers start.
+
+Its primary purpose is to perform initialization tasks required by the application.
+
+---
+
+## Simple Flow
+
+```text
+Pod Created
+     |
+     v
+
+Init Container Starts
+     |
+     v
+
+Initialization Completed
+     |
+     v
+
+Application Container Starts
+```
+
+---
+
+# Key Characteristics of Init Containers
+
+## 1. Run Before Application Containers
+
+Init containers always execute before application containers.
+
+```text
+Init Container
+      |
+      v
+App Container
+```
+
+Application containers will not start until all init containers complete successfully.
+
+---
+
+## 2. Must Complete Successfully
+
+Init containers must exit successfully.
+
+```text
+Exit Code = 0
+```
+
+Only then Kubernetes starts the next container.
+
+---
+
+## 3. Run Sequentially
+
+If multiple init containers exist:
+
+```text
+init-1
+   |
+   v
+
+init-2
+   |
+   v
+
+init-3
+   |
+   v
+
+Application Containers
+```
+
+Each init container must finish before the next begins.
+
+---
+
+## 4. Run Only Once
+
+Init containers run only during Pod startup.
+
+They do not run continuously like application containers.
+
+---
+
+## 5. Application Containers Wait
+
+Application containers remain in:
+
+```text
+Waiting
+```
+
+state until all init containers succeed.
+
+---
+
+# Why Use Init Containers?
+
+## Scenario 1: Wait for Database
+
+Suppose a web application depends on MySQL.
+
+Without Init Container:
+
+```text
+Web App Starts
+      |
+      v
+
+Database Not Ready
+      |
+      v
+
+Application Failure
+```
+
+With Init Container:
+
+```text
+Check Database
+      |
+      v
+
+Database Ready?
+      |
+      v
+
+Yes
+      |
+      v
+
+Start Web App
+```
+
+---
+
+## Scenario 2: Download Configuration Files
+
+Before starting the application:
+
+```text
+Download Config
+      |
+      v
+
+Store in Volume
+      |
+      v
+
+Start Application
+```
+
+---
+
+## Scenario 3: Run Setup Scripts
+
+Example:
+
+```text
+Create Directories
+Configure Files
+Generate Certificates
+```
+
+before application startup.
+
+---
+
+# Advantages of Init Containers
+
+## Separate Setup Logic
+
+No need to include extra tools inside the application image.
+
+Example:
+
+Instead of modifying your application image:
+
+```text
+nginx + curl + sed + awk + python
+```
+
+Use:
+
+```text
+Init Container → curl, awk, sed
+App Container → nginx
+```
+
+This keeps application images small and secure.
+
+---
+
+## Better Security
+
+Unnecessary tools stay outside the application container.
+
+```text
+Init Container
+    |
+    +--> wget
+    +--> curl
+    +--> bash
+
+App Container
+    |
+    +--> Only Application
+```
+
+Smaller attack surface.
+
+---
+
+## Dependency Verification
+
+Applications start only when:
+
+```text
+Database Ready
+Network Available
+Config Present
+```
+
+---
+
+# Init Container vs Regular Container
+
+| Feature                    | Init Container | Application Container |
+| -------------------------- | -------------- | --------------------- |
+| Runs Before App            | Yes            | No                    |
+| Runs Continuously          | No             | Yes                   |
+| Must Complete Successfully | Yes            | No                    |
+| Supports Probes            | No             | Yes                   |
+| Runs Only Once             | Yes            | No                    |
+| Used For Initialization    | Yes            | No                    |
+
+---
+
+# Limitations of Init Containers
+
+Init Containers do NOT support:
+
+```text
+Liveness Probe
+Readiness Probe
+Startup Probe
+Lifecycle Hooks
+```
+
+Reason:
+
+```text
+Init Containers must finish execution.
+```
+
+They are not long-running services.
+
+---
+
+# Init Container Lifecycle
+
+```text
+Pod Created
+     |
+     v
+
+Init Container-1
+     |
+     v
+
+Success
+     |
+     v
+
+Init Container-2
+     |
+     v
+
+Success
+     |
+     v
+
+Application Container
+     |
+     v
+
+Running
+```
+
+---
+
+# What Happens if Init Container Fails?
+
+Suppose:
+
+```text
+Init Container Failed
+```
+
+Kubernetes behavior:
+
+```text
+Init Container Restarted
+      |
+      v
+
+Retry Until Success
+```
+
+---
+
+## Example
+
+```text
+Database Unavailable
+      |
+      v
+
+Init Container Fails
+      |
+      v
+
+Restart
+      |
+      v
+
+Retry
+      |
+      v
+
+Database Available
+      |
+      v
+
+Success
+      |
+      v
+
+Application Starts
+```
+
+---
+
+# Restart Policy Impact
+
+## restartPolicy: Always
+
+```text
+Init Container Fails
+      |
+      v
+
+Retry Until Success
+```
+
+---
+
+## restartPolicy: Never
+
+```text
+Init Container Fails
+      |
+      v
+
+Pod Marked Failed
+```
+
+No retries.
+
+---
+
+# Demo 1 - Waiting for Database
+
+## YAML File
+
+```bash
+# Create YAML file
+vim initcontdemo1.yml
+```
+
+---
+
+## Original YAML
+
+```yaml
+kind: Pod
+
+apiVersion: v1
+
+metadata:
+
+  # Pod name
+  name: init-cont-pod1
+
+  namespace: default
+
+  labels:
+
+    # Custom label
+    role: dev
+
+spec:
+
+  # Restart failed containers
+  restartPolicy: Always
+
+  ##################################################
+  # Init Container
+  ##################################################
+
+  initContainers:
+
+  - name: initcont1
+
+    image: ubuntu
+
+    # Try connecting to database
+    command:
+    - bash
+    - -c
+    - telnet mydb 1521
+
+  ##################################################
+  # Application Container
+  ##################################################
+
+  containers:
+
+  - name: tcont
+
+    image: httpd
+```
+
+---
+
+# Problem with Demo 1
+
+The command:
+
+```bash
+telnet mydb 1521
+```
+
+requires:
+
+```text
+mydb DNS
+Database Service
+Port 1521
+```
+
+If database does not exist:
+
+```text
+Init Container Fails
+```
+
+---
+
+## Result
+
+```text
+Pod Status
+
+Init:CrashLoopBackOff
+```
+
+because Kubernetes keeps retrying.
+
+---
+
+# Corrected Version
+
+Example:
+
+```yaml
+command:
+- bash
+- -c
+- sleep 5
+```
+
+This always succeeds.
+
+---
+
+# Demo 2 - Successful Init Container
+
+## YAML File
+
+```bash
+# Create file
+vim initcontdemo2.yml
+```
+
+---
+
+## Complete YAML
+
+```yaml
+apiVersion: v1
+
+# Pod object
+kind: Pod
+
+metadata:
+
+  # Pod name
+  name: init-cont-pod2
+
+  namespace: default
+
+  labels:
+
+    # Pod label
+    role: dev
+
+spec:
+
+  # Restart failed containers
+  restartPolicy: Always
+
+  ##################################################
+  # Init Container
+  ##################################################
+
+  initContainers:
+
+  - name: initcont1
+
+    # Ubuntu image
+    image: ubuntu
+
+    # Wait for 5 seconds
+    command:
+    - bash
+    - -c
+    - sleep 5
+
+  ##################################################
+  # Main Application Container
+  ##################################################
+
+  containers:
+
+  - name: tcont
+
+    # Apache HTTPD image
+    image: httpd
+```
+
+---
+
+# Deploy the Pod
+
+```bash
+# Create Pod
+kubectl apply -f initcontdemo2.yml
+```
+
+---
+
+# Monitor Pod Status
+
+```bash
+# Watch pod lifecycle
+watch kubectl get pods
+```
+
+---
+
+## What You Will Observe
+
+Initially:
+
+```text
+NAME             READY   STATUS
+init-cont-pod2   0/1     Init:0/1
+```
+
+---
+
+After Init Container Completes:
+
+```text
+NAME             READY   STATUS
+init-cont-pod2   1/1     Running
+```
+
+---
+
+# Detailed Startup Flow
+
+```text
+Pod Created
+     |
+     v
+
+Init Container Started
+     |
+     v
+
+sleep 5
+     |
+     v
+
+Init Container Completed
+     |
+     v
+
+Apache Container Started
+     |
+     v
+
+Pod Running
+```
+
+---
+
+# Viewing Init Container Logs
+
+To view logs of Init Container:
+
+```bash
+# View init container logs
+kubectl logs init-cont-pod2 -c initcont1
+```
+
+---
+
+# Viewing Pod Details
+
+```bash
+# Describe pod
+kubectl describe pod init-cont-pod2
+```
+
+You will see:
+
+```text
+Init Containers:
+    initcont1
+
+Containers:
+    tcont
+```
+
+---
+
+# Real-World Example
+
+## Web Application + Database
+
+```text
+Pod
+ |
+ +--------------------+
+ | Init Container     |
+ | Check MySQL        |
+ +--------------------+
+           |
+           v
+ +--------------------+
+ | Application        |
+ | Spring Boot        |
+ +--------------------+
+```
+
+Flow:
+
+```text
+Check MySQL
+      |
+      v
+
+MySQL Ready?
+     / \
+   No   Yes
+   |      |
+Retry     Start Application
+```
+
+---
+
+# Multiple Init Containers Example
+
+```yaml
+initContainers:
+
+# Create directory
+- name: init-1
+  image: busybox
+  command: ["sh","-c","mkdir /data"]
+
+# Download file
+- name: init-2
+  image: busybox
+  command: ["sh","-c","wget example.com"]
+
+# Validate configuration
+- name: init-3
+  image: busybox
+  command: ["sh","-c","echo Validation Complete"]
+```
+
+Execution order:
+
+```text
+init-1
+   |
+   v
+
+init-2
+   |
+   v
+
+init-3
+   |
+   v
+
+Application Container
+```
+
+---
+
+# Interview Questions
+
+## Q1. What is an Init Container?
+
+An Init Container is a special container that runs before application containers start.
+
+---
+
+## Q2. Can Init Containers run continuously?
+
+No.
+
+They run once and exit.
+
+---
+
+## Q3. Can Init Containers use Liveness Probes?
+
+No.
+
+Init Containers do not support:
+
+```text
+Liveness Probe
+Readiness Probe
+Startup Probe
+```
+
+---
+
+## Q4. What happens if an Init Container fails?
+
+Kubernetes repeatedly restarts it until it succeeds.
+
+---
+
+## Q5. Why use Init Containers?
+
+To:
+
+* Wait for dependencies
+* Download files
+* Run initialization scripts
+* Configure applications
+
+---
+
+## Q6. Do Application Containers start before Init Containers?
+
+No.
+
+Application containers start only after all init containers succeed.
+
+---
+
+# Summary
+
+## Init Container Purpose
+
+```text
+Prepare Environment
+Before Application Starts
+```
+
+---
+
+## Key Features
+
+```text
+Runs Before App Container
+Runs Once
+Must Succeed
+Sequential Execution
+Supports Setup Tasks
+```
+
+---
+
+## Common Use Cases
+
+```text
+Wait For Database
+Download Files
+Generate Configurations
+Run Setup Scripts
+Validate Dependencies
+```
+
+---
+
+# Final Architecture Diagram
+
+```text
+                Pod Created
+                     |
+                     v
+
+           +------------------+
+           | Init Container 1 |
+           +------------------+
+                     |
+                     v
+
+           +------------------+
+           | Init Container 2 |
+           +------------------+
+                     |
+                     v
+
+           +------------------+
+           | Init Container 3 |
+           +------------------+
+                     |
+                     v
+
+           +------------------+
+           | App Container(s) |
+           +------------------+
+                     |
+                     v
+
+                Pod Running
+```
+
+# Kubernetes Static Pods
+
+## Introduction
+
+In Kubernetes, Pods are usually created through the Kubernetes API Server.
+
+For example:
+
+```bash
+kubectl create deployment nginx --image=nginx
+```
+
+When you execute this command:
+
+1. Request goes to API Server.
+2. API Server stores information in etcd.
+3. Scheduler decides which node should run the Pod.
+4. Kubelet on that node creates and runs the Pod.
+
+---
+
+## Who Actually Creates Pods?
+
+Many people think the API Server creates Pods.
+
+This is not correct.
+
+The actual component responsible for creating and running Pods is:
+
+```text
+Kubelet
+```
+
+### Normal Pod Creation Flow
+
+```text
+kubectl
+    |
+    v
+API Server
+    |
+    v
+etcd
+    |
+    v
+Scheduler
+    |
+    v
+Kubelet
+    |
+    v
+Pod Created
+```
+
+The API Server only receives the request.
+
+The Kubelet actually creates and manages the Pod on the assigned node.
+
+---
+
+# What is a Static Pod?
+
+A Static Pod is a Pod that is managed directly by the Kubelet.
+
+Instead of creating a Pod through:
+
+```bash
+kubectl apply -f pod.yaml
+```
+
+we place the Pod YAML file directly in a directory monitored by the Kubelet.
+
+The Kubelet reads the YAML file and creates the Pod automatically.
+
+---
+
+## Definition
+
+```text
+Static Pod = Pod created directly by Kubelet
+```
+
+No API Server interaction is required for creation.
+
+---
+
+# Characteristics of Static Pods
+
+## Created Directly by Kubelet
+
+Normal Pod:
+
+```text
+API Server → Kubelet → Pod
+```
+
+Static Pod:
+
+```text
+YAML File → Kubelet → Pod
+```
+
+---
+
+## Stored on Node Filesystem
+
+The Pod manifest file exists on the node itself.
+
+Example:
+
+```text
+Worker Node
+     |
+     +---- static-pod.yml
+```
+
+---
+
+## Automatically Monitored
+
+Kubelet continuously watches the manifest directory.
+
+Whenever a YAML file appears:
+
+```text
+YAML File Added
+       |
+       v
+Kubelet Detects
+       |
+       v
+Pod Created
+```
+
+---
+
+## Automatically Recreated
+
+If someone deletes the Pod:
+
+```text
+Pod Deleted
+      |
+      v
+Kubelet Notices
+      |
+      v
+Pod Recreated
+```
+
+because the YAML file still exists.
+
+---
+
+## Node-Specific
+
+Static Pods always run on the node where the manifest file exists.
+
+Example:
+
+```text
+Worker-1
+   |
+   +--> static-pod.yml
+   |
+   +--> static-pod Created
+
+Worker-2
+   |
+   +--> No Pod
+```
+
+---
+
+# Static Pod Architecture
+
+```text
+            Worker Node
+                  |
+                  |
+                  v
+
+     /etc/kubernetes/manifests
+                  |
+                  |
+                  v
+
+          static-pod.yml
+                  |
+                  |
+                  v
+
+              Kubelet
+                  |
+                  |
+                  v
+
+             Static Pod
+```
+
+---
+
+# Static Pod Manifest Directory
+
+Kubelet monitors a directory known as:
+
+```text
+Static Pod Path
+```
+
+For kubeadm clusters:
+
+```bash
+/etc/kubernetes/manifests
+```
+
+---
+
+## Verify Kubelet Status
+
+Login to worker node:
+
+```bash
+# Check kubelet status
+service kubelet status
+```
+
+Expected:
+
+```text
+active (running)
+```
+
+---
+
+# Navigate to Manifest Directory
+
+```bash
+# Go to manifest directory
+cd /etc/kubernetes/manifests
+```
+
+Verify contents:
+
+```bash
+# List files
+ls -l
+```
+
+You may see:
+
+```text
+etcd.yaml
+kube-apiserver.yaml
+kube-scheduler.yaml
+kube-controller-manager.yaml
+```
+
+These are Kubernetes control-plane Static Pods.
+
+---
+
+# Creating a Static Pod
+
+## Create YAML File
+
+```bash
+# Create static pod manifest
+vim static-pod.yml
+```
+
+---
+
+## Static Pod YAML
+
+```yaml
+apiVersion: v1
+
+# Kubernetes Pod object
+kind: Pod
+
+metadata:
+
+  # Labels for pod identification
+  labels:
+
+    run: static-pod
+
+  # Pod name
+  name: static-pod
+
+spec:
+
+  containers:
+
+  - name: static-pod
+
+    # Nginx container image
+    image: nginx
+```
+
+---
+
+## Save the File
+
+Once saved inside:
+
+```bash
+/etc/kubernetes/manifests
+```
+
+Kubelet immediately detects it.
+
+---
+
+# What Happens Internally?
+
+```text
+static-pod.yml Created
+         |
+         v
+
+Kubelet Detects YAML
+         |
+         v
+
+Creates Pod
+         |
+         v
+
+Pod Running
+```
+
+No API Server request is needed.
+
+---
+
+# Verify Static Pod
+
+Go to Master Node:
+
+```bash
+# View pods
+kubectl get pods
+```
+
+Example:
+
+```text
+static-pod-worker1
+```
+
+Notice:
+
+```text
+Node Name Appended
+```
+
+Kubelet automatically appends the node name.
+
+---
+
+# Verify Node Placement
+
+```bash
+# View pod details
+kubectl get pods -o wide
+```
+
+Example:
+
+```text
+NAME                  NODE
+static-pod-worker1    worker1
+```
+
+Static Pod always runs on the same node.
+
+---
+
+# Static Pod Naming
+
+Suppose:
+
+```yaml
+metadata:
+  name: static-pod
+```
+
+and node name is:
+
+```text
+worker1
+```
+
+Pod name becomes:
+
+```text
+static-pod-worker1
+```
+
+---
+
+# Deleting Static Pod
+
+Try deleting the Pod:
+
+```bash
+# Delete pod
+kubectl delete pod static-pod-worker1
+```
+
+---
+
+## What Happens?
+
+Within a few seconds:
+
+```text
+Pod Deleted
+      |
+      v
+Kubelet Sees YAML Exists
+      |
+      v
+Pod Recreated
+```
+
+The Pod comes back automatically.
+
+---
+
+# Why Does It Reappear?
+
+Because:
+
+```text
+YAML File Still Exists
+```
+
+in:
+
+```bash
+/etc/kubernetes/manifests
+```
+
+Kubelet continuously ensures the Pod exists.
+
+---
+
+# How to Permanently Delete a Static Pod?
+
+Deleting the Pod is not enough.
+
+You must delete the YAML file.
+
+---
+
+## Step 1
+
+Login to node.
+
+```bash
+# Go to manifest directory
+cd /etc/kubernetes/manifests
+```
+
+---
+
+## Step 2
+
+Delete YAML file.
+
+```bash
+# Remove static pod manifest
+rm static-pod.yml
+```
+
+---
+
+## Step 3
+
+Verify.
+
+```bash
+kubectl get pods
+```
+
+Now the Pod disappears permanently.
+
+---
+
+# Static Pod Recovery Flow
+
+```text
+Static Pod Deleted
+         |
+         v
+
+Manifest Exists?
+      /      \
+    Yes       No
+     |         |
+     v         v
+
+Recreate    Remove Pod
+```
+
+---
+
+# Checking Kubelet Logs
+
+If the Pod is not starting:
+
+```bash
+# View kubelet logs
+journalctl -u kubelet.service | less
+```
+
+Useful for troubleshooting:
+
+* YAML errors
+* Image pull failures
+* Container startup issues
+
+---
+
+# Why Were Static Pods Created?
+
+A common interview question:
+
+```text
+If API Server creates Pods,
+how was API Server itself created?
+```
+
+---
+
+## Chicken and Egg Problem
+
+Kubernetes components are Pods:
+
+```text
+kube-apiserver
+etcd
+kube-scheduler
+controller-manager
+```
+
+But these components must exist before Kubernetes is operational.
+
+So:
+
+```text
+Who creates them?
+```
+
+Answer:
+
+```text
+Kubelet using Static Pods
+```
+
+---
+
+# Kubernetes Control Plane Components
+
+Check:
+
+```bash
+kubectl get pods -n kube-system -o wide
+```
+
+You will see:
+
+```text
+kube-apiserver
+etcd
+kube-scheduler
+kube-controller-manager
+```
+
+These are Static Pods.
+
+---
+
+# Control Plane Static Pod Architecture
+
+```text
+Master Node
+     |
+     v
+
+/etc/kubernetes/manifests
+     |
+     +---------------------+
+     | kube-apiserver.yaml |
+     +---------------------+
+     | etcd.yaml           |
+     +---------------------+
+     | scheduler.yaml      |
+     +---------------------+
+     | controller.yaml     |
+     +---------------------+
+            |
+            v
+
+         Kubelet
+            |
+            v
+
+     Control Plane Pods
+```
+
+---
+
+# kubeadm and Static Pods
+
+When running:
+
+```bash
+kubeadm init
+```
+
+Kubernetes automatically:
+
+1. Downloads control-plane manifests.
+2. Places them inside:
+
+```bash
+/etc/kubernetes/manifests
+```
+
+3. Kubelet creates Static Pods.
+
+---
+
+# Verify Control Plane Manifests
+
+On Master Node:
+
+```bash
+# Navigate to manifest directory
+cd /etc/kubernetes/manifests
+```
+
+List files:
+
+```bash
+# View manifests
+ls -l
+```
+
+Example:
+
+```text
+etcd.yaml
+kube-apiserver.yaml
+kube-scheduler.yaml
+kube-controller-manager.yaml
+```
+
+---
+
+# Static Pod vs Normal Pod
+
+| Feature                    | Normal Pod | Static Pod |
+| -------------------------- | ---------- | ---------- |
+| Created Through API Server | Yes        | No         |
+| Created By Kubelet         | Yes        | Yes        |
+| YAML Stored in Cluster     | Yes        | No         |
+| YAML Stored on Node        | No         | Yes        |
+| Scheduled By Scheduler     | Yes        | No         |
+| Bound to Specific Node     | No         | Yes        |
+| Auto Recreated by Kubelet  | Yes        | Yes        |
+| Used for Control Plane     | No         | Yes        |
+
+---
+
+# Static Pod Lifecycle
+
+```text
+Create YAML
+      |
+      v
+
+Place in
+/etc/kubernetes/manifests
+      |
+      v
+
+Kubelet Detects
+      |
+      v
+
+Pod Created
+      |
+      v
+
+Pod Deleted?
+      |
+      v
+
+Kubelet Recreates
+      |
+      v
+
+Delete YAML
+      |
+      v
+
+Pod Removed Permanently
+```
+
+---
+
+# Real-World Usage
+
+In production applications:
+
+```text
+Rarely Used
+```
+
+For application deployments:
+
+Use:
+
+```text
+Deployment
+StatefulSet
+DaemonSet
+Job
+```
+
+instead.
+
+---
+
+## Main Purpose of Static Pods
+
+Used internally by Kubernetes for:
+
+```text
+kube-apiserver
+etcd
+kube-scheduler
+kube-controller-manager
+```
+
+during cluster bootstrapping.
+
+---
+
+# Interview Questions
+
+## Q1. What creates Pods in Kubernetes?
+
+```text
+Kubelet
+```
+
+---
+
+## Q2. What is a Static Pod?
+
+A Pod managed directly by Kubelet using a local manifest file.
+
+---
+
+## Q3. Where are Static Pod manifests stored?
+
+```bash
+/etc/kubernetes/manifests
+```
+
+---
+
+## Q4. Can Static Pods be scheduled to another node?
+
+```text
+No
+```
+
+They always run on the node where the manifest file exists.
+
+---
+
+## Q5. Why does a Static Pod reappear after deletion?
+
+Because the YAML file still exists in the manifest directory.
+
+---
+
+## Q6. How do you permanently delete a Static Pod?
+
+Delete its YAML file from:
+
+```bash
+/etc/kubernetes/manifests
+```
+
+---
+
+## Q7. Which Kubernetes components run as Static Pods?
+
+```text
+etcd
+kube-apiserver
+kube-scheduler
+kube-controller-manager
+```
+
+---
+
+# Summary
+
+## Static Pod
+
+```text
+Created Directly By Kubelet
+```
+
+---
+
+## Manifest Location
+
+```bash
+/etc/kubernetes/manifests
+```
+
+---
+
+## Created Without
+
+```text
+API Server
+Scheduler
+```
+
+---
+
+## Main Use
+
+```text
+Control Plane Components
+```
+
+---
+
+# Final Architecture Diagram
+
+```text
+                 kubeadm init
+                       |
+                       v
+
+         /etc/kubernetes/manifests
+                       |
+      -----------------------------------
+      |               |                |
+      v               v                v
+
+ kube-apiserver    etcd        kube-scheduler
+      |
+      |
+      v
+
+    Kubelet
+      |
+      v
+
+ Creates Static Pods
+      |
+      v
+
+ Kubernetes Cluster Starts
+```
+
 
 ---
 -----------------------------------------------------------------------------
