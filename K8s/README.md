@@ -20429,3 +20429,602 @@ Restarts Container
  Continue       Add/Remove From Service   Restart
                                          Container
 ```
+
+# CI/CD Pipeline using GitHub, Maven, Docker, DockerHub, Jenkins and GKE
+
+## Project Overview
+
+This project demonstrates a complete CI/CD pipeline using:
+
+* GitHub (Source Code Repository)
+* Maven (Build Tool)
+* Docker (Containerization)
+* DockerHub (Image Registry)
+* Jenkins (CI/CD Automation)
+* Google Kubernetes Engine (Deployment Platform)
+
+### Pipeline Flow
+
+```text
+Developer
+    |
+    v
+GitHub Repository
+    |
+    v
+Jenkins Pipeline
+    |
+    +--> Checkout Source Code
+    +--> Build WAR Artifact
+    +--> Build Docker Image
+    +--> Push Image to DockerHub
+    +--> Deploy to GKE
+    |
+    v
+Running Application
+```
+
+---
+
+# Architecture Diagram
+
+```text
++-------------+
+| Developer   |
++-------------+
+       |
+       v
++----------------------+
+| GitHub Repository    |
++----------------------+
+       |
+       v
++----------------------+
+| Jenkins Server       |
+|                      |
+| Checkout Code        |
+| Maven Build          |
+| Docker Build         |
+| Docker Push          |
++----------------------+
+       |
+       v
++----------------------+
+| DockerHub            |
++----------------------+
+       |
+       v
++----------------------+
+| GKE Cluster          |
+| Deployment           |
+| Service              |
+| Pods                 |
++----------------------+
+```
+
+---
+
+# Step 1: Create Jenkins VM in GCP
+
+Create an Ubuntu VM.
+
+Recommended:
+
+```text
+OS           : Ubuntu 24.04
+Machine Type : e2-medium
+Disk         : 30 GB
+```
+
+Allow:
+
+* HTTP
+* HTTPS
+
+---
+
+# Install Java
+
+```bash
+# Update packages
+sudo apt-get update
+
+# Install Java 21
+sudo apt install openjdk-21-jre-headless -y
+```
+
+Verify:
+
+```bash
+java -version
+```
+
+---
+
+# Install Jenkins
+
+## Add Jenkins Repository
+
+```bash
+# Create keyring directory
+sudo mkdir -p /etc/apt/keyrings
+
+# Download Jenkins key
+sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc \
+https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+```
+
+## Add Repository
+
+```bash
+echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc]" \
+https://pkg.jenkins.io/debian-stable binary/ | sudo tee \
+/etc/apt/sources.list.d/jenkins.list > /dev/null
+```
+
+## Install Jenkins
+
+```bash
+sudo apt update
+
+sudo apt install jenkins -y
+```
+
+## Start Jenkins
+
+```bash
+sudo systemctl start jenkins
+
+sudo systemctl enable jenkins
+```
+
+## Get Initial Password
+
+```bash
+sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+```
+
+Access:
+
+```text
+http://<VM-PUBLIC-IP>:8080
+```
+
+---
+
+# Install Docker
+
+```bash
+# Install Docker
+sudo apt-get install docker.io -y
+```
+
+Start Docker:
+
+```bash
+sudo systemctl start docker
+
+sudo systemctl enable docker
+```
+
+Verify:
+
+```bash
+docker version
+```
+
+---
+
+# Allow Jenkins to Use Docker
+
+```bash
+# Add Jenkins user to Docker group
+sudo usermod -aG docker jenkins
+
+# Restart services
+sudo systemctl restart docker
+sudo systemctl restart jenkins
+```
+
+---
+
+# Install kubectl
+
+```bash
+# Download installation script
+sudo wget https://raw.githubusercontent.com/lerndevops/labs/master/scripts/installK8S.sh -P /tmp
+
+# Install kubectl
+sudo bash /tmp/installK8S.sh
+```
+
+Verify:
+
+```bash
+kubectl version --client
+```
+
+---
+
+# Step 2: Configure Maven in Jenkins
+
+Navigate:
+
+```text
+Manage Jenkins
+  |
+  +--> Tools
+```
+
+Add Maven:
+
+```text
+Name:
+mymaven
+```
+
+Enable:
+
+```text
+Install Automatically
+```
+
+Save.
+
+---
+
+# Step 3: Configure DockerHub Credentials
+
+Navigate:
+
+```text
+Manage Jenkins
+   |
+   +--> Credentials
+```
+
+Add:
+
+```text
+Kind:
+Secret Text
+```
+
+Example:
+
+```text
+Credential ID:
+DOCKERHUB_TOKEN
+```
+
+Paste DockerHub Access Token.
+
+---
+
+# Step 4: Create GKE Cluster
+
+Navigate:
+
+```text
+Kubernetes Engine
+   |
+   +--> Create Cluster
+```
+
+Example:
+
+```text
+Cluster Name : cluster-1
+Region       : us-central1
+Nodes        : 2
+```
+
+---
+
+# Step 5: Install GKE Plugin
+
+Navigate:
+
+```text
+Manage Jenkins
+   |
+   +--> Plugins
+```
+
+Install:
+
+```text
+Google Kubernetes Engine Plugin
+```
+
+Restart Jenkins.
+
+---
+
+# Step 6: Create Service Account
+
+Navigate:
+
+```text
+IAM & Admin
+   |
+   +--> Service Accounts
+```
+
+Create:
+
+```text
+jenkins-gke
+```
+
+Grant role:
+
+```text
+Kubernetes Engine Admin
+```
+
+---
+
+# Generate JSON Key
+
+```text
+Service Account
+    |
+    +--> Keys
+    |
+    +--> Add Key
+    |
+    +--> JSON
+```
+
+Download key.
+
+---
+
+# Add GCP Credentials to Jenkins
+
+Navigate:
+
+```text
+Manage Jenkins
+    |
+    +--> Credentials
+```
+
+Upload downloaded JSON.
+
+Example:
+
+```text
+Credential ID:
+ci-cd-gke
+```
+
+---
+
+# Kubernetes Deployment Manifest
+
+```yaml
+# deployment.yml
+
+apiVersion: apps/v1
+
+# Deployment resource
+kind: Deployment
+
+metadata:
+
+  # Deployment name
+  name: addressbook
+
+spec:
+
+  # Number of pod replicas
+  replicas: 2
+
+  selector:
+    matchLabels:
+      app: addressbook
+
+  template:
+
+    metadata:
+      labels:
+        app: addressbook
+
+    spec:
+
+      containers:
+
+      - name: addressbook
+
+        # DockerHub image
+        image: YOUR_DOCKERHUB_USERNAME/myappimage01
+
+        ports:
+
+        # Application port
+        - containerPort: 8080
+
+---
+
+apiVersion: v1
+
+# Service resource
+kind: Service
+
+metadata:
+
+  # Service name
+  name: addressbook-service
+
+spec:
+
+  # Expose application externally
+  type: LoadBalancer
+
+  selector:
+    app: addressbook
+
+  ports:
+  - port: 80
+    targetPort: 8080
+```
+
+---
+
+# Complete Jenkins Pipeline
+
+```groovy
+pipeline {
+
+    agent any
+
+    tools {
+        maven 'mymaven'
+    }
+
+    environment {
+
+        # GCP Project ID
+        PROJECT_ID = 'YOUR_PROJECT_ID'
+
+        # GKE Cluster Name
+        CLUSTER_NAME = 'cluster-1'
+
+        # Cluster Zone
+        LOCATION = 'us-central1-a'
+
+        # Jenkins Credential ID
+        CREDENTIALS_ID = 'ci-cd-gke'
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+
+            steps {
+
+                # Clone source code
+                git 'https://github.com/Sonal0409/DevOpsCodeDemo.git'
+            }
+        }
+
+        stage('Build Artifact') {
+
+            steps {
+
+                # Build WAR file
+                sh 'mvn clean package'
+            }
+        }
+
+        stage('Build Docker Image') {
+
+            steps {
+
+                # Build Docker image
+                sh 'docker build -t myappimage01 .'
+            }
+        }
+
+        stage('Push Image To DockerHub') {
+
+            steps {
+
+                withCredentials([
+                    string(
+                        credentialsId: 'DOCKERHUB_TOKEN',
+                        variable: 'DOCKERHUB_TOKEN'
+                    )
+                ]) {
+
+                    # Login to DockerHub
+                    sh 'docker login -u YOUR_DOCKERHUB_USERNAME -p ${DOCKERHUB_TOKEN}'
+                }
+
+                # Tag image
+                sh 'docker tag myappimage01 YOUR_DOCKERHUB_USERNAME/myappimage01'
+
+                # Push image
+                sh 'docker push YOUR_DOCKERHUB_USERNAME/myappimage01'
+            }
+        }
+
+        stage('Deploy To GKE') {
+
+            steps {
+
+                step([
+                    $class: 'KubernetesEngineBuilder',
+
+                    # GCP Project
+                    projectId: env.PROJECT_ID,
+
+                    # Cluster Name
+                    clusterName: env.CLUSTER_NAME,
+
+                    # Cluster Zone
+                    location: env.LOCATION,
+
+                    # Deployment Manifest
+                    manifestPattern: 'deployment.yml',
+
+                    # Jenkins GCP Credentials
+                    credentialsId: env.CREDENTIALS_ID,
+
+                    # Verify deployment
+                    verifyDeployments: true
+                ])
+            }
+        }
+    }
+}
+```
+
+---
+
+# Verification Commands
+
+```bash
+# Check deployments
+kubectl get deployment
+
+# Check pods
+kubectl get pods
+
+# Check services
+kubectl get svc
+```
+
+---
+
+# Interview Questions
+
+## What is CI?
+
+Continuous Integration.
+
+Automatically builds and tests code whenever changes are pushed.
+
+## What is CD?
+
+Continuous Delivery / Continuous Deployment.
+
+Automatically deploys applications.
+
+## Why DockerHub?
+
+Stores container images.
+
+## Why Maven?
+
+Builds Java applications and generates WAR/JAR files.
+
+## Why Jenkins?
+
+Automates the complete CI/CD workflow.
+
+## Why GKE?
+
+Managed Kubernetes service provided by Google Cloud.
