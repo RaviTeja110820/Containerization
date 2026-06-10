@@ -21028,3 +21028,749 @@ Automates the complete CI/CD workflow.
 ## Why GKE?
 
 Managed Kubernetes service provided by Google Cloud.
+
+
+
+# Amazon EKS (Elastic Kubernetes Service) Cluster Setup
+
+## What is Amazon EKS?
+
+Amazon Elastic Kubernetes Service (EKS) is a fully managed Kubernetes service provided by AWS.
+
+With EKS, AWS manages:
+
+* Kubernetes Control Plane
+* API Server
+* etcd
+* Scheduler
+* Controller Manager
+* High Availability
+
+This allows DevOps engineers to focus on deploying applications rather than managing Kubernetes infrastructure.
+
+### Benefits of EKS
+
+* Fully Managed Kubernetes
+* Highly Available Control Plane
+* Automatic Upgrades
+* Integration with IAM
+* Integration with VPC
+* Integration with CloudWatch
+* Secure and Scalable
+
+---
+
+# EKS Architecture
+
+```text
+                    AWS Cloud
+                         |
+                         |
+            +-----------------------+
+            |      EKS Cluster      |
+            |-----------------------|
+            | API Server            |
+            | Scheduler             |
+            | Controller Manager    |
+            | etcd                  |
+            +-----------------------+
+                         |
+         ---------------------------------
+         |                               |
+         v                               v
+
++------------------+         +------------------+
+| Worker Node 1    |         | Worker Node 2    |
+| Kubernetes Pods  |         | Kubernetes Pods  |
++------------------+         +------------------+
+
+```
+
+---
+
+# Step 1: Create EKS Cluster
+
+Navigate to:
+
+```text
+AWS Console
+    |
+    +--> Elastic Kubernetes Service (EKS)
+    |
+    +--> Clusters
+    |
+    +--> Create Cluster
+```
+
+---
+
+# Step 2: Create IAM Role for EKS Cluster
+
+EKS requires an IAM role to manage AWS resources.
+
+Navigate to:
+
+```text
+AWS Console
+    |
+    +--> IAM
+    |
+    +--> Roles
+    |
+    +--> Create Role
+```
+
+---
+
+## Select Trusted Entity
+
+Choose:
+
+```text
+AWS Service
+```
+
+Select:
+
+```text
+EKS
+```
+
+Then select:
+
+```text
+EKS Cluster
+```
+
+Click:
+
+```text
+Next
+```
+
+---
+
+## Role Name
+
+Example:
+
+```text
+eks-cluster-role
+```
+
+Click:
+
+```text
+Create Role
+```
+
+---
+
+# Step 3: Configure EKS Cluster
+
+Return to:
+
+```text
+EKS
+    |
+    +--> Create Cluster
+```
+
+Fill:
+
+```text
+Cluster Name:
+my-eks-cluster
+
+Kubernetes Version:
+Latest Stable Version
+
+Cluster IAM Role:
+eks-cluster-role
+```
+
+---
+
+## Networking
+
+Use:
+
+```text
+Default VPC
+```
+
+Select:
+
+```text
+Default Subnets
+```
+
+---
+
+## Security Group
+
+Create a new Security Group or use an existing one.
+
+Example:
+
+```text
+eks-cluster-sg
+```
+
+Attach it to the cluster.
+
+---
+
+## Add-ons
+
+Keep default add-ons:
+
+```text
+VPC CNI
+CoreDNS
+kube-proxy
+EBS CSI Driver
+```
+
+Click:
+
+```text
+Next
+```
+
+Then:
+
+```text
+Create Cluster
+```
+
+---
+
+# Cluster Creation Time
+
+EKS Control Plane usually takes:
+
+```text
+10-15 Minutes
+```
+
+to become Active.
+
+---
+
+# Step 4: Create Node Group
+
+After cluster becomes Active:
+
+Navigate to:
+
+```text
+EKS
+   |
+   +--> Cluster
+   |
+   +--> Compute
+   |
+   +--> Add Node Group
+```
+
+---
+
+# What is a Node Group?
+
+A Node Group is a collection of EC2 instances that act as Kubernetes worker nodes.
+
+```text
+EKS Cluster
+      |
+      +--> Node Group
+              |
+              +--> EC2 Instance 1
+              +--> EC2 Instance 2
+              +--> EC2 Instance 3
+```
+
+---
+
+# Step 5: Create IAM Role for Node Group
+
+Navigate:
+
+```text
+IAM
+   |
+   +--> Roles
+   |
+   +--> Create Role
+```
+
+Select:
+
+```text
+AWS Service
+```
+
+Choose:
+
+```text
+EC2
+```
+
+---
+
+## Attach Required Policies
+
+Attach these three policies:
+
+### AmazonEKSWorkerNodePolicy
+
+Allows worker nodes to join cluster.
+
+### AmazonEC2ContainerRegistryReadOnly
+
+Allows nodes to pull Docker images from ECR.
+
+### AmazonEKS_CNI_Policy
+
+Allows networking plugin to manage networking.
+
+---
+
+## Role Name
+
+Example:
+
+```text
+eks-nodegroup-role
+```
+
+Click:
+
+```text
+Create Role
+```
+
+---
+
+# Step 6: Configure Node Group
+
+Back in EKS:
+
+Select:
+
+```text
+Node Group Name:
+eks-node-group
+```
+
+Choose:
+
+```text
+Node IAM Role:
+eks-nodegroup-role
+```
+
+---
+
+## AMI Type
+
+Select:
+
+```text
+Amazon Linux 2
+```
+
+---
+
+## Instance Type
+
+Example:
+
+```text
+t3.medium
+```
+
+---
+
+## Desired Capacity
+
+Example:
+
+```text
+Minimum Nodes : 2
+Desired Nodes : 2
+Maximum Nodes : 4
+```
+
+Click:
+
+```text
+Create
+```
+
+---
+
+# Node Group Creation Time
+
+Usually takes:
+
+```text
+5 Minutes
+```
+
+---
+
+# Step 7: Create EC2 Instance for Cluster Administration
+
+Create:
+
+```text
+Amazon Linux 2023
+```
+
+instance.
+
+This machine will be used for:
+
+* AWS CLI
+* kubectl
+* Cluster Administration
+
+---
+
+# Step 8: Install AWS CLI
+
+Connect to EC2 instance.
+
+Install AWS CLI:
+
+```bash
+# Download AWS CLI package
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+
+# Extract package
+unzip awscliv2.zip
+
+# Install AWS CLI
+sudo ./aws/install
+```
+
+Verify:
+
+```bash
+aws --version
+```
+
+Expected:
+
+```text
+aws-cli/2.x.x
+```
+
+---
+
+# Step 9: Configure AWS CLI
+
+Configure credentials:
+
+```bash
+aws configure
+```
+
+Provide:
+
+```text
+AWS Access Key
+AWS Secret Key
+Region
+Output Format
+```
+
+Example:
+
+```text
+Region:
+us-east-2
+
+Output:
+json
+```
+
+---
+
+# Step 10: Install kubectl
+
+Download kubectl:
+
+```bash
+# Download kubectl binary
+curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+```
+
+---
+
+## Make Executable
+
+```bash
+# Add execute permission
+chmod +x ./kubectl
+```
+
+---
+
+## Move to PATH
+
+```bash
+# Move kubectl to system path
+sudo mv ./kubectl /usr/local/bin
+```
+
+---
+
+## Verify Installation
+
+```bash
+kubectl version --client
+```
+
+Expected:
+
+```text
+Client Version: v1.xx.x
+```
+
+---
+
+# Step 11: Connect to EKS Cluster
+
+There are two methods:
+
+## Method 1: AWS CloudShell
+
+Click:
+
+```text
+CloudShell Icon
+```
+
+near notification bell in AWS Console.
+
+CloudShell already contains:
+
+* AWS CLI
+* kubectl
+
+---
+
+## Method 2: EC2 Instance
+
+Use installed AWS CLI and kubectl.
+
+---
+
+# Step 12: Generate Kubernetes Config
+
+Run:
+
+```bash
+# Configure kubectl to access EKS cluster
+aws eks --region us-east-2 update-kubeconfig --name newcluster
+```
+
+---
+
+# What Does This Command Do?
+
+```bash
+aws eks --region us-east-2 update-kubeconfig --name newcluster
+```
+
+This command:
+
+1. Contacts AWS EKS API
+2. Retrieves cluster details
+3. Updates kubeconfig file
+4. Allows kubectl to connect to EKS
+
+---
+
+# Verify Connection
+
+Check Nodes:
+
+```bash
+# View worker nodes
+kubectl get nodes
+```
+
+Expected:
+
+```text
+NAME                    STATUS
+ip-10-0-1-100.ec2.internal Ready
+ip-10-0-2-101.ec2.internal Ready
+```
+
+---
+
+# Verify Cluster
+
+Check Pods:
+
+```bash
+# View system pods
+kubectl get pods -A
+```
+
+Check Namespaces:
+
+```bash
+# View namespaces
+kubectl get ns
+```
+
+Check Services:
+
+```bash
+# View services
+kubectl get svc -A
+```
+
+---
+
+# EKS Networking Flow
+
+```text
+Internet
+    |
+    v
+Load Balancer
+    |
+    v
+EKS Service
+    |
+    v
+Pod
+```
+
+---
+
+# Important Components
+
+## EKS Control Plane
+
+Managed by AWS.
+
+Includes:
+
+* API Server
+* etcd
+* Scheduler
+* Controller Manager
+
+---
+
+## Node Group
+
+Managed EC2 instances.
+
+Responsible for:
+
+* Running Pods
+* Running Containers
+* Providing Compute Resources
+
+---
+
+## IAM Roles
+
+Used for:
+
+* Authentication
+* Authorization
+* Cluster Access
+
+---
+
+# Common Troubleshooting
+
+## Check Cluster Status
+
+```bash
+aws eks describe-cluster \
+--name newcluster \
+--region us-east-2
+```
+
+---
+
+## Check Current Context
+
+```bash
+kubectl config current-context
+```
+
+---
+
+## View Nodes
+
+```bash
+kubectl get nodes
+```
+
+---
+
+## View Pods
+
+```bash
+kubectl get pods -A
+```
+
+---
+
+# Interview Questions
+
+## What is EKS?
+
+Amazon Elastic Kubernetes Service is a managed Kubernetes service provided by AWS.
+
+---
+
+## What components are managed by AWS in EKS?
+
+AWS manages:
+
+* API Server
+* Scheduler
+* Controller Manager
+* etcd
+
+---
+
+## What is a Node Group?
+
+A collection of EC2 worker nodes used to run Kubernetes Pods.
+
+---
+
+## Why is IAM Role required?
+
+IAM Roles allow EKS and worker nodes to securely access AWS services.
+
+---
+
+## Which command connects kubectl to EKS?
+
+```bash
+aws eks --region us-east-2 update-kubeconfig --name newcluster
+```
+
+---
+
+## How do you verify EKS connectivity?
+
+```bash
+kubectl get nodes
+```
+
+If nodes appear, connectivity is successful.
