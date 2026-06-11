@@ -21774,3 +21774,759 @@ kubectl get nodes
 ```
 
 If nodes appear, connectivity is successful.
+
+
+
+# GitOps and ArgoCD in Kubernetes
+
+## What is GitOps?
+
+GitOps is a modern deployment methodology that uses Git repositories as the **single source of truth** for infrastructure and application deployment.
+
+### Definition
+
+GitOps is a process where:
+
+* All Kubernetes manifests (Deployments, Services, Ingress, ConfigMaps, etc.) are stored in Git.
+* Any infrastructure or application change is performed through Git commits.
+* A GitOps tool continuously compares the Git repository with the actual cluster state.
+* If differences are found, the tool automatically synchronizes the cluster.
+
+---
+
+## Understanding GitOps
+
+### Traditional Deployment Approach
+
+```text
+Developer
+    |
+    v
+CI/CD Tool
+(Jenkins/GitHub Actions)
+    |
+    v
+Push Changes Directly
+to Kubernetes Cluster
+```
+
+Problems:
+
+* Difficult to track changes.
+* Manual deployments possible.
+* Cluster can drift from expected state.
+* Limited visibility.
+
+---
+
+### GitOps Approach
+
+```text
+Developer
+    |
+    v
+Git Repository
+(Single Source of Truth)
+    |
+    v
+ArgoCD
+    |
+    v
+Kubernetes Cluster
+```
+
+Benefits:
+
+* Complete audit trail.
+* Easy rollback.
+* Version controlled deployments.
+* Improved security.
+* Consistent deployments.
+
+---
+![Architecture](images/argocd-architecture.jpg)
+# Benefits of GitOps
+
+## Standardized Workflow
+
+All deployment changes follow the same process:
+
+```text
+Code Change
+    |
+Pull Request
+    |
+Review
+    |
+Merge
+    |
+Deploy
+```
+
+---
+
+## Better Visibility
+
+Every change is stored in Git.
+
+You can easily track:
+
+* Who changed it
+* What changed
+* When it changed
+* Why it changed
+
+---
+
+## Reliability
+
+Git always contains the desired state.
+
+If a cluster is accidentally modified:
+
+```text
+Git Repository
+       ≠
+Cluster State
+```
+
+ArgoCD automatically restores the correct configuration.
+
+---
+
+## Consistency
+
+Multiple environments can be managed consistently.
+
+Examples:
+
+```text
+Development
+Testing
+Staging
+Production
+```
+
+All environments use the same Git-driven deployment process.
+
+---
+
+# GitOps Workflow
+
+## Step 1
+
+Developer modifies application code.
+
+```text
+Developer
+    |
+    v
+Git Commit
+```
+
+---
+
+## Step 2
+
+CI Pipeline starts.
+
+Examples:
+
+* Jenkins
+* GitHub Actions
+* GitLab CI
+
+Pipeline performs:
+
+* Build
+* Unit Test
+* Package
+* Docker Image Creation
+
+---
+
+## Step 3
+
+Image is pushed to registry.
+
+Examples:
+
+```text
+DockerHub
+Amazon ECR
+Google Artifact Registry
+Harbor
+```
+
+---
+
+## Step 4
+
+Deployment YAML is updated with the new image version.
+
+Example:
+
+```yaml
+# Old image
+image: myapp:v1
+
+# New image
+image: myapp:v2
+```
+
+---
+
+## Step 5
+
+Pull Request is created.
+
+```text
+Feature Branch
+      |
+      v
+Pull Request
+      |
+      v
+Review
+      |
+      v
+Merge
+```
+
+---
+
+## Step 6
+
+ArgoCD detects Git changes.
+
+---
+
+## Step 7
+
+ArgoCD synchronizes the cluster.
+
+---
+
+## Step 8
+
+Kubernetes deploys the updated application.
+
+---
+
+# Understanding the Architecture Diagram
+
+## Diagram Flow
+
+```text
+Developer
+    |
+    v
+Git Repository
+    |
+    v
+Webhook Event
+    |
+    v
+ArgoCD
+    |
+    +-------------------+
+    |                   |
+    v                   v
+Repository Service   Application Controller
+    |                   |
+    +-------------------+
+            |
+            v
+      Kubernetes
+       Cluster
+```
+
+---
+
+## Components in the Diagram
+
+### Developer
+
+Developer creates:
+
+* Application code
+* Kubernetes YAML files
+
+and pushes them to Git.
+
+---
+
+### Git Repository
+
+Stores:
+
+* Deployment YAMLs
+* Service YAMLs
+* Ingress YAMLs
+* Helm Charts
+* Kustomize files
+
+Git becomes the source of truth.
+
+---
+
+### Pull Request (PR)
+
+Before deployment:
+
+```text
+Developer
+    |
+Pull Request
+    |
+Review
+    |
+Approval
+    |
+Merge
+```
+
+This ensures deployment quality.
+
+---
+
+### Webhook
+
+When code is merged:
+
+GitHub sends a webhook notification to ArgoCD.
+
+Example:
+
+```text
+GitHub
+    |
+    v
+Webhook
+    |
+    v
+ArgoCD
+```
+
+---
+
+### ArgoCD API Server
+
+Acts as the central interface.
+
+Responsible for:
+
+* UI requests
+* CLI requests
+* Webhook handling
+* Authentication
+
+---
+
+### Repository Service
+
+Stores and caches Git repositories.
+
+Responsibilities:
+
+* Clone repositories
+* Store repository credentials
+* Read manifests
+* Cache Git data
+
+---
+
+### Application Controller
+
+Most important ArgoCD component.
+
+Responsibilities:
+
+* Compare Git state
+* Compare Cluster state
+* Detect drift
+* Synchronize resources
+
+---
+
+### Kubernetes Cluster
+
+Final destination where applications run.
+
+ArgoCD deploys:
+
+* Pods
+* Deployments
+* Services
+* ConfigMaps
+* Secrets
+* Ingress
+
+---
+
+# ArgoCD
+
+## What is ArgoCD?
+
+ArgoCD is a Kubernetes-native Continuous Deployment tool.
+
+It implements GitOps principles.
+
+---
+
+## Key Feature
+
+ArgoCD uses:
+
+```text
+PULL Model
+```
+
+Instead of:
+
+```text
+PUSH Model
+```
+
+---
+
+### Push Model
+
+Examples:
+
+* Jenkins
+* GitHub Actions
+
+```text
+CI/CD Tool
+     |
+     v
+Push Changes
+     |
+     v
+Cluster
+```
+
+---
+
+### Pull Model
+
+ArgoCD continuously pulls updates.
+
+```text
+Git Repository
+       |
+       v
+ArgoCD Pulls Changes
+       |
+       v
+Cluster
+```
+
+---
+
+# Main Features of ArgoCD
+
+## Automatic Deployment
+
+Automatically deploys new Git changes.
+
+---
+
+## Sync Feature
+
+Compares:
+
+```text
+Desired State (Git)
+        VS
+Current State (Cluster)
+```
+
+---
+
+## Drift Detection
+
+Detects unauthorized cluster changes.
+
+Example:
+
+Someone manually changes replicas:
+
+```yaml
+# Git
+replicas: 3
+
+# Cluster
+replicas: 10
+```
+
+ArgoCD detects OutOfSync state.
+
+---
+
+## Rollback
+
+Rollback simply means:
+
+```text
+Git Revert
+     |
+     v
+ArgoCD Sync
+```
+
+No complex pipeline execution required.
+
+---
+
+## Web UI
+
+Provides dashboard showing:
+
+* Health
+* Sync status
+* History
+* Events
+* Resources
+
+---
+
+# ArgoCD Components
+
+## API Server
+
+Handles:
+
+* UI requests
+* CLI requests
+* Authentication
+* Webhooks
+
+---
+
+## Repository Service
+
+Stores:
+
+* Git repositories
+* Credentials
+* SSH Keys
+* Access Tokens
+
+---
+
+## Application Controller
+
+Responsible for:
+
+* Monitoring cluster
+* Monitoring Git
+* Synchronization
+* Self-healing
+
+---
+
+# ArgoCD vs Traditional CI/CD
+
+| Feature                     | ArgoCD | Jenkins/GitHub Actions |
+| --------------------------- | ------ | ---------------------- |
+| Build Code                  | ❌      | ✅                      |
+| Run Tests                   | ❌      | ✅                      |
+| Create Artifact             | ❌      | ✅                      |
+| Build Docker Image          | ❌      | ✅                      |
+| Push Docker Image           | ❌      | ✅                      |
+| Deploy Kubernetes Resources | ✅      | ✅                      |
+| Pull Based                  | ✅      | ❌                      |
+| Push Based                  | ❌      | ✅                      |
+| Kubernetes Focused          | ✅      | ❌                      |
+| Drift Detection             | ✅      | ❌                      |
+| Automatic Sync              | ✅      | ❌                      |
+| GUI Dashboard               | ✅      | Depends                |
+
+---
+
+# Installing ArgoCD
+
+## Create Namespace
+
+```bash
+kubectl create namespace argocd
+```
+
+---
+
+## Install ArgoCD
+
+```bash
+kubectl apply -n argocd \
+-f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+```
+
+---
+
+## Verify Installation
+
+```bash
+kubectl get pods -n argocd
+```
+
+---
+
+# Expose ArgoCD UI
+
+Change service type:
+
+```bash
+kubectl patch svc argocd-server \
+-n argocd \
+-p '{"spec": {"type": "NodePort"}}'
+```
+
+Verify:
+
+```bash
+kubectl get svc -n argocd
+```
+
+---
+
+# Access ArgoCD
+
+Open browser:
+
+```text
+https://<NODE-IP>:<NODEPORT>
+```
+
+Accept the self-signed certificate warning.
+
+---
+
+# Get Initial Admin Password
+
+## View Secret
+
+```bash
+kubectl get secret \
+argocd-initial-admin-secret \
+-n argocd -o json
+```
+
+You will see:
+
+```json
+{
+  "data": {
+    "password": "RklUeEF4OHFGcmh2NUgwdQ=="
+  }
+}
+```
+
+---
+
+## Decode Password
+
+```bash
+echo RklUeEF4OHFGcmh2NUgwdQ== | base64 --decode
+```
+
+---
+
+## Easier Method
+
+```bash
+kubectl -n argocd get secret argocd-initial-admin-secret \
+-o jsonpath="{.data.password}" | base64 --decode
+```
+
+---
+
+# Login Credentials
+
+```text
+Username:
+admin
+
+Password:
+<decoded password>
+```
+
+---
+
+# Complete GitOps Flow
+
+```text
+Developer
+    |
+    v
+Git Commit
+    |
+    v
+Pull Request
+    |
+    v
+Review & Merge
+    |
+    v
+Webhook
+    |
+    v
+ArgoCD
+    |
+    v
+Compare Desired State
+    |
+    v
+Sync
+    |
+    v
+Kubernetes Deployment
+    |
+    v
+Application Running
+```
+
+---
+
+# Interview Questions
+
+## What is GitOps?
+
+GitOps is a deployment methodology that uses Git as the single source of truth for infrastructure and application deployment.
+
+---
+
+## What is ArgoCD?
+
+ArgoCD is a Kubernetes-native GitOps Continuous Deployment tool.
+
+---
+
+## Is ArgoCD CI or CD?
+
+ArgoCD is only CD (Continuous Deployment).
+
+It does not:
+
+* Build code
+* Test code
+* Create Docker images
+
+---
+
+## What is OutOfSync in ArgoCD?
+
+When Git state and Cluster state are different.
+
+---
+
+## What is the main advantage of GitOps?
+
+Complete visibility, version control, automatic synchronization, and easy rollback.
+
+---
+
+## Does ArgoCD use Push or Pull model?
+
+ArgoCD uses a Pull-based model.
