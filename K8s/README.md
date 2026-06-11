@@ -22530,3 +22530,799 @@ Complete visibility, version control, automatic synchronization, and easy rollba
 ## Does ArgoCD use Push or Pull model?
 
 ArgoCD uses a Pull-based model.
+
+---------------------------------------------------------------------------------------
+
+# GitHub Actions + Helm + ArgoCD + Kubernetes (GKE)
+
+## Project Overview
+
+This project demonstrates a modern GitOps CI/CD pipeline using:
+
+* GitHub Repository
+* GitHub Actions
+* Maven
+* Docker
+* DockerHub
+* Helm Charts
+* ArgoCD
+* Google Kubernetes Engine (GKE)
+
+The main idea is:
+
+```text
+Developer
+   |
+   v
+GitHub Commit
+   |
+   v
+GitHub Actions
+   |
+   +--> Build Application
+   +--> Build Docker Image
+   +--> Push Image to DockerHub
+   +--> Update Helm values.yaml
+   |
+   v
+Git Repository Updated
+   |
+   v
+ArgoCD Detects Change
+   |
+   v
+Sync Kubernetes Cluster
+   |
+   v
+Deploy New Version
+```
+
+---
+
+# Understanding the Architecture
+
+## Traditional CI/CD
+
+In traditional CI/CD:
+
+```text
+GitHub
+   |
+   v
+Jenkins/GitHub Actions
+   |
+   v
+Directly Deploy to Kubernetes
+```
+
+Problems:
+
+* CI/CD tool requires cluster access.
+* Deployment logic exists inside pipeline.
+* Harder to audit changes.
+
+---
+
+## GitOps Architecture
+
+```text
+Developer
+   |
+   v
+GitHub Repository
+   |
+   v
+GitHub Actions
+(Build & Push Image)
+   |
+   v
+Update Helm values.yaml
+   |
+   v
+Git Commit
+   |
+   v
+ArgoCD
+   |
+   v
+GKE Cluster
+```
+
+Benefits:
+
+* Git is the source of truth.
+* Easy rollback.
+* Complete audit history.
+* Better security.
+
+---
+
+# Project Components
+
+## GitHub Repository
+
+Stores:
+
+* Application Source Code
+* Dockerfile
+* Helm Charts
+* Kubernetes Manifests
+* GitHub Actions Workflow
+
+---
+
+## GitHub Actions
+
+Responsible for:
+
+* Build Maven Artifact
+* Build Docker Image
+* Push Image to DockerHub
+* Update Helm values.yaml
+
+GitHub Actions DOES NOT deploy directly.
+
+---
+
+## DockerHub
+
+Stores container images.
+
+Example:
+
+```text
+sonal04/cicdimage:28
+```
+
+---
+
+## Helm
+
+Helm is Kubernetes Package Manager.
+
+Instead of hardcoding image versions:
+
+```yaml
+image: sonal04/cicdimage:28
+```
+
+we use variables:
+
+```yaml
+image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+```
+
+---
+
+## ArgoCD
+
+ArgoCD continuously watches Git repository.
+
+When values.yaml changes:
+
+```yaml
+tag: 28
+```
+
+to
+
+```yaml
+tag: 29
+```
+
+ArgoCD detects the change and deploys the new version.
+
+---
+
+## GKE
+
+Google Kubernetes Engine hosts the application.
+
+---
+
+# Deployment YAML
+
+File:
+
+```text
+templates/deployment.yaml
+```
+
+## Deployment Manifest
+
+```yaml
+apiVersion: apps/v1
+
+# Kubernetes Deployment
+kind: Deployment
+
+metadata:
+
+  # Deployment name
+  name: kubeserve
+
+spec:
+
+  # Number of pod replicas
+  replicas: 3
+
+  # Wait before marking pod ready
+  minReadySeconds: 10
+
+  strategy:
+
+    # Rolling update strategy
+    type: RollingUpdate
+
+    rollingUpdate:
+
+      # Maximum unavailable pods
+      maxUnavailable: 1
+
+      # Extra pods allowed during update
+      maxSurge: 1
+
+  selector:
+    matchLabels:
+      app: kubeserve
+
+  template:
+
+    metadata:
+
+      labels:
+        app: kubeserve
+
+    spec:
+
+      containers:
+
+      - name: app
+
+        # Image value taken from Helm values.yaml
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+```
+
+---
+
+# Rolling Update Explained
+
+Current State:
+
+```text
+Pod-1
+Pod-2
+Pod-3
+```
+
+New Image Available:
+
+```text
+v1 -> v2
+```
+
+Process:
+
+```text
+Create New Pod
+Delete Old Pod
+
+Create New Pod
+Delete Old Pod
+
+Create New Pod
+Delete Old Pod
+```
+
+Result:
+
+```text
+Zero Downtime Deployment
+```
+
+---
+
+# Service YAML
+
+File:
+
+```text
+templates/service.yaml
+```
+
+```yaml
+apiVersion: v1
+
+# Service resource
+kind: Service
+
+metadata:
+
+  # Service name
+  name: kubeserve-svc
+
+spec:
+
+  # Expose application externally
+  type: NodePort
+
+  ports:
+
+    # Service Port
+    - port: 80
+
+      # Container Port
+      targetPort: 80
+
+  selector:
+
+    # Forward traffic to pods with label app=kubeserve
+    app: kubeserve
+```
+
+---
+
+# Helm values.yaml
+
+File:
+
+```yaml
+image:
+
+  # DockerHub repository
+  repository: sonal04/cicdimage
+
+  # Current image version
+  tag: 28
+```
+
+---
+
+# Why values.yaml?
+
+Without Helm:
+
+```yaml
+image: sonal04/cicdimage:28
+```
+
+Every version requires editing deployment.yaml.
+
+With Helm:
+
+```yaml
+image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+```
+
+Only values.yaml changes.
+
+Example:
+
+```yaml
+tag: 29
+```
+
+---
+
+# GitHub Actions Workflow
+
+File:
+
+```text
+.github/workflows/cicd.yml
+```
+
+Workflow Name:
+
+```yaml
+name: CICD with ArgoCD
+```
+
+---
+
+# Trigger
+
+```yaml
+on:
+  workflow_dispatch:
+```
+
+Meaning:
+
+Manual execution from GitHub Actions UI.
+
+---
+
+# Job Definition
+
+```yaml
+jobs:
+
+  cicd:
+
+    runs-on: ubuntu-latest
+```
+
+GitHub creates an Ubuntu VM.
+
+---
+
+# Environment Variable
+
+```yaml
+env:
+
+  imageName: "cicdimage"
+```
+
+Reusable variable.
+
+---
+
+# Step 1: Checkout Source Code
+
+```yaml
+- name: Checkout the repo
+
+  uses: actions/checkout@v3
+```
+
+Downloads repository code.
+
+---
+
+# Step 2: Install Java
+
+```yaml
+- name: Setup Java 11
+
+  uses: actions/setup-java@v4
+
+  with:
+
+    distribution: 'temurin'
+
+    java-version: '11'
+```
+
+Required for Maven build.
+
+---
+
+# Step 3: Build Application
+
+```yaml
+- name: Build the code
+
+  run: mvn package
+```
+
+Produces:
+
+```text
+target/app.war
+```
+
+or
+
+```text
+target/app.jar
+```
+
+---
+
+# Step 4: Setup Docker Buildx
+
+```yaml
+- name: Install docker buildx tool
+
+  uses: docker/setup-buildx-action@v3
+```
+
+Enables advanced Docker builds.
+
+---
+
+# Step 5: DockerHub Login
+
+```yaml
+- name: Loginto DockerHUB
+
+  uses: docker/login-action@v2
+
+  with:
+
+    username: ${{ secrets.DOCKERHUB_USERNAME }}
+
+    password: ${{ secrets.DOCKERHUB_TOKEN }}
+```
+
+Credentials stored securely in GitHub Secrets.
+
+---
+
+# Step 6: Build and Push Image
+
+```yaml
+- name: Build and push Image
+
+  uses: docker/build-push-action@v6
+
+  with:
+
+    context: .
+
+    push: true
+
+    tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.imageName }}:${{ github.run_number }}
+```
+
+Example:
+
+```text
+sonal04/cicdimage:28
+```
+
+---
+
+# Understanding github.run_number
+
+GitHub automatically increments:
+
+```text
+Run 1 -> Tag 1
+Run 2 -> Tag 2
+Run 3 -> Tag 3
+```
+
+Example:
+
+```text
+sonal04/cicdimage:28
+```
+
+This becomes unique image version.
+
+---
+
+# Step 7: Trigger Deployment Using ArgoCD
+
+```yaml
+- name: Trigger Deployment using ArgoCD
+
+  run: |
+```
+
+This stage updates Helm values.yaml.
+
+---
+
+# Configure Git User
+
+```yaml
+git config --global user.name 'GitHub Actions'
+
+git config --global user.email 'actions@github.com'
+```
+
+Required before commit.
+
+---
+
+# Update Image Tag
+
+```yaml
+sed -i "s/^  tag: .*/  tag: ${{ github.run_number }}/" values.yaml
+```
+
+Example:
+
+Before:
+
+```yaml
+tag: 28
+```
+
+After:
+
+```yaml
+tag: 29
+```
+
+---
+
+# Commit Changes
+
+```yaml
+git add values.yaml
+
+git commit -m "Update file values.yaml"
+```
+
+---
+
+# Push Changes
+
+```yaml
+git push
+```
+
+Now Git repository contains:
+
+```yaml
+tag: 29
+```
+
+---
+
+# How ArgoCD Detects the Change
+
+ArgoCD continuously polls Git repository.
+
+It detects:
+
+```text
+Old Tag = 28
+
+New Tag = 29
+```
+
+Application becomes:
+
+```text
+OutOfSync
+```
+
+---
+
+# ArgoCD Sync Process
+
+```text
+Git Repository
+      |
+      v
+Helm values.yaml Changed
+      |
+      v
+ArgoCD Detects Change
+      |
+      v
+Helm Template Generated
+      |
+      v
+Deployment Updated
+      |
+      v
+Kubernetes Rolling Update
+```
+
+---
+
+# Kubernetes Deployment Process
+
+Current Pods:
+
+```text
+kubeserve-v1
+kubeserve-v1
+kubeserve-v1
+```
+
+New Version:
+
+```text
+kubeserve-v2
+```
+
+Kubernetes performs:
+
+```text
+Create New Pod
+Delete Old Pod
+
+Create New Pod
+Delete Old Pod
+
+Create New Pod
+Delete Old Pod
+```
+
+Because:
+
+```yaml
+maxUnavailable: 1
+
+maxSurge: 1
+```
+
+Application remains available.
+
+---
+
+# Complete Flow Summary
+
+```text
+Developer Pushes Code
+        |
+        v
+GitHub Actions Starts
+        |
+        v
+Maven Build
+        |
+        v
+Docker Build
+        |
+        v
+Push Image To DockerHub
+        |
+        v
+Update Helm values.yaml
+        |
+        v
+Git Commit + Push
+        |
+        v
+ArgoCD Detects Change
+        |
+        v
+ArgoCD Sync
+        |
+        v
+GKE Deployment Updated
+        |
+        v
+Users Access New Version
+```
+
+---
+
+# Interview Questions
+
+## Why use Helm with ArgoCD?
+
+Helm makes Kubernetes manifests reusable and configurable.
+
+---
+
+## Why update values.yaml instead of deployment.yaml?
+
+Only image tag changes frequently.
+
+Keeping image version in values.yaml is easier and cleaner.
+
+---
+
+## Does GitHub Actions deploy directly to Kubernetes?
+
+No.
+
+GitHub Actions only updates Git repository.
+
+ArgoCD performs deployment.
+
+---
+
+## What is the benefit of GitOps?
+
+Git becomes the single source of truth.
+
+---
+
+## What is OutOfSync in ArgoCD?
+
+Cluster state differs from Git state.
+
+---
+
+## What triggers ArgoCD deployment?
+
+Changes in Git repository.
+
+---
+
+## What is github.run_number?
+
+A unique number generated for every workflow execution.
+
+Used as Docker image version tag.
